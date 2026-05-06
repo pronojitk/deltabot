@@ -1,0 +1,28 @@
+# systemd service unit for Delta Bot dashboard.
+#
+# Install:
+#   sudo cp deltabot.service /etc/systemd/system/deltabot.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now deltabot
+#
+# View logs:
+#   sudo journalctl -u deltabot -f
+
+[Unit]
+Description=Delta Bot (Crypto + MCX) Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/deltabot
+Environment="PATH=/home/ubuntu/deltabot/.venv/bin"
+ExecStart=/home/ubuntu/deltabot/.venv/bin/python web_app.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

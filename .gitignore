@@ -1,0 +1,52 @@
+# ── Secrets ──────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+config_local.py
+!.env.example
+
+# ── Claude Code local settings ───────────────────────
+.claude/
+
+# ── Runtime state (must NEVER be committed) ──────────
+ft_state.json
+bt_state.json
+*.log
+*.db
+*.sqlite
+
+# ── Python ───────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Virtual environments ─────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── IDE / editor ─────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── OS junk ──────────────────────────────────────────
+*.bak
+*.tmp
+*.cache

@@ -34,7 +34,8 @@ BACKTEST_BUFFER = 100_000_000.0   # ₹10 crore "test capital"
 
 class BacktestTester(ForwardTester):
     """Tester variant for backtests: truly fixed sizing, no balance cap.
-    Sizing scales with actual stop distance so ATR-based stops keep ₹ risk constant."""
+    Sizing scales with actual stop distance so ATR-based stops keep $ risk constant.
+    P&L % comes from the parent class (return on margin)."""
     def _size_position(self, stop_distance_pct: float | None = None):
         risk_usd = STARTING_BALANCE * (RISK_PER_TRADE_PCT / 100.0)
         sl_pct = stop_distance_pct if (stop_distance_pct and stop_distance_pct > 0) \

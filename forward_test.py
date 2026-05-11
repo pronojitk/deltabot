@@ -263,7 +263,11 @@ class ForwardTester:
         trade["fees_usd"]      = round(fees, 2)
         trade["gross_pnl_usd"] = round(gross_pnl, 2)
         trade["pnl_usd"]       = round(pnl_usd, 2)
-        trade["pnl_pct"]       = round(move_pct * 100, 4)
+        # P&L % is now return on margin (collateral), not raw price move.
+        # With leverage, a 1% price move on $1000 notional with $40 margin = 25% margin return.
+        margin = trade.get("margin_usd") or 0.0
+        trade["pnl_pct"]       = round((pnl_usd / margin * 100) if margin else 0.0, 4)
+        trade["pnl_price_pct"] = round(move_pct * 100, 4)   # raw price-move % (kept for reference)
         trade["balance_after"] = round(self.balance, 2)
 
     # ============================================================ Equity / stats
@@ -400,9 +404,13 @@ class ForwardTester:
                     move = (price - entry) / entry if entry else 0
                 else:
                     move = (entry - price) / entry if entry else 0
-                t["current_price"]  = round(price, 8)
-                t["pnl_usd_live"]   = round(t["notional_usd"] * move, 2)
-                t["pnl_pct_live"]   = round(move * 100, 4)
+                pnl_live = t["notional_usd"] * move
+                margin = t.get("margin_usd") or 0.0
+                t["current_price"]    = round(price, 8)
+                t["pnl_usd_live"]     = round(pnl_live, 2)
+                # P&L % = return on margin (with leverage), not raw price move
+                t["pnl_pct_live"]     = round((pnl_live / margin * 100) if margin else 0.0, 4)
+                t["pnl_price_pct_live"] = round(move * 100, 4)   # raw % (kept for reference)
             else:
                 t["current_price"]  = None
                 t["pnl_usd_live"]   = None

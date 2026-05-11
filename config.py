@@ -9,8 +9,18 @@ load_dotenv(Path(__file__).parent / ".env")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
-# Delta Exchange API (no auth needed for public market data)
-DELTA_BASE_URL = "https://api.delta.exchange"
+# Delta Exchange API
+#   "india"  → https://api.india.delta.exchange  (more INR-settled symbols)
+#   "global" → https://api.delta.exchange        (default global exchange)
+DELTA_REGION = os.getenv("DELTA_REGION", "india").lower()
+DELTA_BASE_URL = (
+    "https://api.india.delta.exchange" if DELTA_REGION == "india"
+    else "https://api.delta.exchange"
+)
+
+# Optional API credentials (only needed for authenticated endpoints / live trading)
+DELTA_API_KEY    = os.getenv("DELTA_API_KEY", "")
+DELTA_API_SECRET = os.getenv("DELTA_API_SECRET", "")
 
 # Scanning parameters
 STRATEGY_NAME = "Donchian"  # Trend-following: Donchian breakout + EMA + ATR trail + entropy

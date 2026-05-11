@@ -1,12 +1,84 @@
+import hashlib
+import hmac
 import requests
 import time
 import logging
-from config import DELTA_BASE_URL, REQUEST_DELAY, CANDLE_LIMIT
+from config import (
+    DELTA_BASE_URL, REQUEST_DELAY, CANDLE_LIMIT,
+    DELTA_API_KEY, DELTA_API_SECRET, DELTA_REGION,
+)
 
 logger = logging.getLogger(__name__)
 
 SESSION = requests.Session()
-SESSION.headers.update({"Content-Type": "application/json"})
+SESSION.headers.update({
+    "Content-Type": "application/json",
+    "User-Agent":   "deltabot-python/1.0",
+})
+
+logger.info("Delta region: %s  (%s)", DELTA_REGION, DELTA_BASE_URL)
+
+
+# ─── Authenticated request signing (HMAC-SHA256) ───────────────────────────
+# Delta signs: method + timestamp + path + query_string + body
+def _sign(method: str, path: str, query: str = "", body: str = "") -> tuple[str, str]:
+    """Returns (signature, timestamp) for a Delta authenticated request."""
+    ts = str(int(time.time()))
+    payload = method + ts + path + (("?" + query) if query else "") + body
+    sig = hmac.new(
+        DELTA_API_SECRET.encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return sig, ts
+
+
+def _auth_headers(method: str, path: str, query: str = "", body: str = "") -> dict:
+    if not DELTA_API_KEY or not DELTA_API_SECRET:
+        return {}
+    sig, ts = _sign(method, path, query, body)
+    return {
+        "api-key":   DELTA_API_KEY,
+        "timestamp": ts,
+        "signature": sig,
+    }
+
+
+def _auth_get(endpoint: str, params: dict = None, retries: int = 3) -> dict | None:
+    """GET to a Delta authenticated endpoint (e.g. /v2/wallet/balances)."""
+    if not DELTA_API_KEY:
+        logger.warning("Auth GET %s requested but DELTA_API_KEY not set", endpoint)
+        return None
+    qs = ""
+    if params:
+        qs = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+    headers = _auth_headers("GET", endpoint, qs)
+    url = f"{DELTA_BASE_URL}{endpoint}"
+    for attempt in range(retries):
+        try:
+            resp = SESSION.get(url, params=params, headers=headers, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("success") is False:
+                logger.warning("Auth API error on %s: %s", endpoint, data.get("error"))
+                return None
+            return data
+        except requests.exceptions.RequestException as e:
+            logger.warning("Auth request failed (%s/%s) for %s: %s",
+                           attempt + 1, retries, endpoint, e)
+            if attempt < retries - 1:
+                time.sleep(1.5 ** attempt)
+    return None
+
+
+def get_wallet_balances() -> list[dict] | None:
+    """Authenticated. Returns list of wallet balances. None if no creds."""
+    data = _auth_get("/v2/wallet/balances")
+    return data.get("result") if data else None
+
+
+def auth_available() -> bool:
+    return bool(DELTA_API_KEY and DELTA_API_SECRET)
 
 # Resolution string -> seconds per candle
 _RES_SECONDS = {

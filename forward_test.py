@@ -22,6 +22,7 @@ Sizing math:
 """
 
 import json
+import sqlite3
 import time
 import logging
 from pathlib import Path
@@ -35,40 +36,166 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
-STATE_FILE  = Path(__file__).parent / "ft_state.json"
+STATE_FILE  = Path(__file__).parent / "ft_state.json"   # legacy / migration source
+DB_FILE     = Path(__file__).parent / "ft_state.db"
 
 
 class ForwardTester:
-    def __init__(self, file: Path = STATE_FILE):
-        self.file = file
-        self.lock = Lock()
-        state = self._load()
-        self.balance: float        = state.get("balance",  STARTING_BALANCE)
-        self.trades: list[dict]    = state.get("trades",   [])
-        self.equity_curve: list[dict] = state.get("equity_curve", [])
-        # last_prices used to compute live unrealised P&L for the dashboard
-        self.last_prices: dict[str, float] = {}
+    """SQLite-backed paper-trade ledger.
 
-    # ============================================================ I/O
-    def _load(self) -> dict:
-        if not self.file.exists():
-            return {}
+    Tables:
+      account     (key TEXT PRIMARY KEY, value REAL)        - balance, etc.
+      trades      (id INTEGER PK, ... full trade dict columns + extras_json TEXT)
+      equity      (time INTEGER PK, balance REAL, equity REAL)
+
+    The in-memory `self.trades` list mirrors the SQLite `trades` table for fast
+    iteration. Every mutation goes through INSERT/UPDATE so the DB is always the
+    source of truth and any crash leaves it consistent.
+    """
+
+    # All "core" trade fields that get their own typed column. Anything else
+    # goes into `extras_json` (e.g. level_label, trail_distance, high_water).
+    _CORE_COLS = [
+        "id", "symbol", "side", "status", "leverage",
+        "entry_price", "entry_time", "sl", "tp",
+        "notional_usd", "margin_usd", "risk_usd",
+        "qty", "lots", "contract_value",
+        "exit_price", "exit_time", "exit_reason",
+        "pnl_usd", "pnl_pct", "pnl_price_pct",
+        "fees_usd", "gross_pnl_usd", "balance_after",
+        "bars_held", "max_hold_bars",
+    ]
+
+    def __init__(self, file: Path = DB_FILE):
+        # `file` may be passed as a .json path (e.g. by backtest.py). Force .db.
+        self.file = file if str(file).endswith(".db") else DB_FILE
+        self.lock = Lock()
+        self.db = sqlite3.connect(self.file, check_same_thread=False, isolation_level=None)
+        self.db.row_factory = sqlite3.Row
+        self._init_schema()
+        self._migrate_json_if_needed()
+
+        # Hydrate in-memory mirror
+        self.trades        : list[dict] = self._load_trades()
+        self.equity_curve  : list[dict] = self._load_equity()
+        self.balance       : float      = self._load_balance()
+        self.last_prices   : dict[str, float] = {}
+
+    # ============================================================ DB setup
+    def _init_schema(self) -> None:
+        c = self.db.cursor()
+        cols_sql = ",\n  ".join([
+            "id INTEGER PRIMARY KEY",
+            "symbol TEXT",
+            "side TEXT",
+            "status TEXT",
+            "leverage REAL",
+            "entry_price REAL", "entry_time INTEGER",
+            "sl REAL", "tp REAL",
+            "notional_usd REAL", "margin_usd REAL", "risk_usd REAL",
+            "qty REAL", "lots REAL", "contract_value REAL",
+            "exit_price REAL", "exit_time INTEGER", "exit_reason TEXT",
+            "pnl_usd REAL", "pnl_pct REAL", "pnl_price_pct REAL",
+            "fees_usd REAL", "gross_pnl_usd REAL", "balance_after REAL",
+            "bars_held INTEGER", "max_hold_bars INTEGER",
+            "extras_json TEXT",
+        ])
+        c.execute(f"CREATE TABLE IF NOT EXISTS trades (\n  {cols_sql}\n)")
+        c.execute("CREATE TABLE IF NOT EXISTS account (key TEXT PRIMARY KEY, value REAL)")
+        c.execute("""CREATE TABLE IF NOT EXISTS equity (
+                       time INTEGER PRIMARY KEY,
+                       balance REAL,
+                       equity REAL
+                     )""")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_trades_entry_time ON trades(entry_time)")
+
+    def _migrate_json_if_needed(self) -> None:
+        """Import legacy ft_state.json on first run if the DB is empty."""
+        c = self.db.cursor()
+        n = c.execute("SELECT COUNT(*) FROM trades").fetchone()[0]
+        if n > 0: return
+        if not STATE_FILE.exists(): return
         try:
-            return json.loads(self.file.read_text())
-        except (json.JSONDecodeError, OSError) as e:
-            logger.warning("Could not load ft_state file: %s", e)
-            return {}
+            data = json.loads(STATE_FILE.read_text())
+        except Exception as e:
+            logger.warning("Could not read legacy ft_state.json: %s", e)
+            return
+        if not isinstance(data, dict): return
+
+        for t in data.get("trades", []):
+            self._insert_trade(t, commit=False)
+        for p in data.get("equity_curve", []):
+            try:
+                c.execute("INSERT OR REPLACE INTO equity(time,balance,equity) VALUES (?,?,?)",
+                          (int(p["time"]), float(p["balance"]), float(p["equity"])))
+            except (KeyError, ValueError, TypeError):
+                continue
+        if "balance" in data:
+            c.execute("INSERT OR REPLACE INTO account(key,value) VALUES ('balance',?)",
+                      (float(data["balance"]),))
+        logger.info("Migrated ft_state.json → SQLite (%d trades, %d equity rows)",
+                    len(data.get("trades", [])), len(data.get("equity_curve", [])))
+        # Rename so we don't re-import on next boot
+        try:
+            STATE_FILE.rename(STATE_FILE.with_suffix(".json.migrated"))
+        except OSError:
+            pass
+
+    # ============================================================ Hydration
+    def _row_to_trade(self, r: sqlite3.Row) -> dict:
+        t = {k: r[k] for k in r.keys() if k != "extras_json"}
+        if r["extras_json"]:
+            try: t.update(json.loads(r["extras_json"]))
+            except Exception: pass
+        return t
+
+    def _load_trades(self) -> list[dict]:
+        c = self.db.cursor()
+        rows = c.execute("SELECT * FROM trades ORDER BY entry_time ASC").fetchall()
+        return [self._row_to_trade(r) for r in rows]
+
+    def _load_equity(self) -> list[dict]:
+        c = self.db.cursor()
+        rows = c.execute("SELECT time,balance,equity FROM equity ORDER BY time ASC").fetchall()
+        return [dict(r) for r in rows]
+
+    def _load_balance(self) -> float:
+        c = self.db.cursor()
+        r = c.execute("SELECT value FROM account WHERE key='balance'").fetchone()
+        return float(r[0]) if r else STARTING_BALANCE
+
+    # ============================================================ Write helpers
+    def _split_trade(self, t: dict) -> tuple[dict, dict]:
+        """Returns (core_cols_dict, extras_dict)."""
+        core = {k: t.get(k) for k in self._CORE_COLS}
+        extras = {k: v for k, v in t.items() if k not in self._CORE_COLS}
+        return core, extras
+
+    def _insert_trade(self, t: dict, commit: bool = True) -> None:
+        core, extras = self._split_trade(t)
+        placeholders = ",".join("?" for _ in self._CORE_COLS) + ",?"
+        cols = ",".join(self._CORE_COLS) + ",extras_json"
+        vals = [core.get(k) for k in self._CORE_COLS] + [json.dumps(extras)]
+        self.db.execute(f"INSERT OR REPLACE INTO trades({cols}) VALUES ({placeholders})", vals)
+
+    def _update_trade(self, t: dict) -> None:
+        self._insert_trade(t)   # PRIMARY KEY id → INSERT OR REPLACE works as upsert
+
+    def _save_balance(self) -> None:
+        self.db.execute("INSERT OR REPLACE INTO account(key,value) VALUES ('balance',?)",
+                        (float(self.balance),))
+
+    def _save_equity_point(self, ts: int, bal: float, eq: float) -> None:
+        self.db.execute("INSERT OR REPLACE INTO equity(time,balance,equity) VALUES (?,?,?)",
+                        (int(ts), float(bal), float(eq)))
 
     def _save(self) -> None:
-        try:
-            payload = {
-                "balance":      self.balance,
-                "trades":       self.trades,
-                "equity_curve": self.equity_curve[-1000:],   # cap size
-            }
-            self.file.write_text(json.dumps(payload, indent=2))
-        except OSError as e:
-            logger.error("Could not save ft_state file: %s", e)
+        """Full sync — kept for compatibility. Writes balance + every trade."""
+        self._save_balance()
+        for t in self.trades:
+            self._update_trade(t)
 
     def reset(self) -> None:
         """Wipe history and restore starting balance."""
@@ -77,7 +204,9 @@ class ForwardTester:
             self.trades.clear()
             self.equity_curve.clear()
             self.last_prices.clear()
-            self._save()
+            self.db.execute("DELETE FROM trades")
+            self.db.execute("DELETE FROM equity")
+            self._save_balance()
         logger.info("Forward tester reset to $%.2f", STARTING_BALANCE)
 
     # ============================================================ Sizing
@@ -172,7 +301,8 @@ class ForwardTester:
         }
         with self.lock:
             self.trades.append(trade)
-            self._save()
+            self._insert_trade(trade)
+            self._save_balance()
         logger.info(
             "OPEN %s %s @ %g | notional=$%.2f margin=$%.2f risk=$%.2f | SL %g TP %g",
             side, symbol, entry, notional, margin, risk_usd, sl, tp,
@@ -205,13 +335,18 @@ class ForwardTester:
                 hit_status, hit_price = self._check_exit(t, current_price)
                 if hit_status:
                     self._close_trade(t, hit_status, hit_price, current_time)
+                    self._update_trade(t)
                     closed.append(dict(t))
                 elif t["bars_held"] >= t.get("max_hold_bars", MAX_HOLD_BARS):
                     self._close_trade(t, "TIMEOUT", current_price, current_time)
+                    self._update_trade(t)
                     closed.append(dict(t))
+                else:
+                    # Update bars_held / trailing SL in DB
+                    self._update_trade(t)
             if closed:
                 self._snapshot_equity(current_time)
-                self._save()
+                self._save_balance()
 
         for t in closed:
             logger.info(
@@ -272,11 +407,10 @@ class ForwardTester:
 
     # ============================================================ Equity / stats
     def _snapshot_equity(self, ts: int) -> None:
-        self.equity_curve.append({
-            "time":    ts,
-            "balance": round(self.balance, 2),
-            "equity":  round(self.equity(), 2),
-        })
+        bal = round(self.balance, 2)
+        eq  = round(self.equity(), 2)
+        self.equity_curve.append({"time": ts, "balance": bal, "equity": eq})
+        self._save_equity_point(ts, bal, eq)
 
     def unrealized_pnl(self) -> float:
         total = 0.0
@@ -428,3 +562,18 @@ class ForwardTester:
     def get_equity_curve(self, limit: int = 500) -> list[dict]:
         with self.lock:
             return list(self.equity_curve[-limit:])
+
+    # ============================================================ Export
+    def export_csv(self, csv_path: Path | str = "trades_export.csv") -> Path:
+        """Dump all trades to CSV (closed + open). Returns path written."""
+        import csv
+        path = Path(csv_path)
+        cols = self._CORE_COLS + ["level_label", "level_price", "use_trailing",
+                                   "trail_distance", "high_water"]
+        with self.lock, path.open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
+            w.writeheader()
+            for t in sorted(self.trades, key=lambda x: x.get("entry_time") or 0):
+                w.writerow(t)
+        logger.info("Exported %d trades → %s", len(self.trades), path)
+        return path

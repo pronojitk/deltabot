@@ -383,6 +383,23 @@ def api_mcx():
     return jsonify(snap)
 
 
+@app.route("/api/export/trades.csv")
+def api_export_trades_csv():
+    """Stream trades.csv straight from SQLite."""
+    import io, csv as _csv
+    from flask import Response
+    buf = io.StringIO()
+    cols = state.tester._CORE_COLS + ["level_label", "level_price", "use_trailing",
+                                       "trail_distance", "high_water"]
+    w = _csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+    w.writeheader()
+    with state.tester.lock:
+        for t in sorted(state.tester.trades, key=lambda x: x.get("entry_time") or 0):
+            w.writerow(t)
+    return Response(buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment;filename=trades.csv"})
+
+
 @app.route("/api/reset", methods=["POST"])
 def api_reset():
     if state.engine and state.engine.is_running():

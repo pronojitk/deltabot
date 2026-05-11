@@ -12,9 +12,13 @@ config_local.py
 
 # ── Runtime state (must NEVER be committed) ──────────
 ft_state.json
+ft_state.json.migrated
 bt_state.json
+ft_state.db
+ft_state.db-journal
 *.log
 *.db
+*.db-journal
 *.sqlite
 
 # ── Python ───────────────────────────────────────────

@@ -6,6 +6,7 @@ import logging
 from config import (
     DELTA_BASE_URL, REQUEST_DELAY, CANDLE_LIMIT,
     DELTA_API_KEY, DELTA_API_SECRET, DELTA_REGION,
+    MAX_SYMBOLS, MIN_LISTING_AGE_DAYS,
 )
 
 logger = logging.getLogger(__name__)
@@ -107,24 +108,72 @@ def _get(endpoint: str, params: dict = None, retries: int = 3) -> dict | None:
 
 
 def get_perpetual_contracts() -> list[dict]:
-    """Return all active perpetual futures contracts."""
+    """Return active perpetual futures, filtered to top-N liquid + old-enough contracts.
+
+    Filters applied in order:
+      1. State must be "live", contract type must be perpetual.
+      2. Exclude tokenized US equities (they return no candle data).
+      3. Skip listings younger than MIN_LISTING_AGE_DAYS (whippy / unproven).
+      4. Sort by 24h turnover (USD) desc, take top MAX_SYMBOLS.
+    """
+    from datetime import datetime, timezone
     data = _get("/v2/products")
     if not data:
         return []
     products = data.get("result", [])
-    # Delta lists tokenized US equities as perpetuals (AAPLX, TSLAX, NVDAX, ...)
-    # but their /history/candles endpoint returns empty data. Skip them.
     TOKENIZED_STOCKS = {
         "AAPLXUSDT", "TSLAXUSDT", "NVDAXUSDT", "GOOGLXUSDT",
         "AMZNXUSDT", "METAXUSDT", "MSFTXUSDT", "NFLXUSDT",
         "COINXUSDT", "MSTRXUSDT", "SPYXUSDT", "QQQXUSDT",
     }
-    return [
-        p for p in products
-        if p.get("contract_type") == "perpetual_futures"
-        and p.get("state") == "live"
-        and p.get("symbol") not in TOKENIZED_STOCKS
-    ]
+
+    def _launch_ts(p: dict) -> float | None:
+        """Best-effort parse of the product's listing date → UTC unix seconds."""
+        for k in ("launch_time", "listed_at", "created_at"):
+            v = p.get(k)
+            if not v: continue
+            if isinstance(v, (int, float)):
+                # Sometimes ms, sometimes s
+                return float(v) / (1000.0 if v > 1e12 else 1.0)
+            if isinstance(v, str):
+                try:
+                    s = v.replace("Z", "+00:00")
+                    return datetime.fromisoformat(s).timestamp()
+                except Exception:
+                    continue
+        return None
+
+    def _turnover(p: dict) -> float:
+        for k in ("turnover_usd", "turnover", "volume"):
+            try:
+                v = float(p.get(k) or 0)
+                if v > 0: return v
+            except (TypeError, ValueError):
+                continue
+        return 0.0
+
+    now_ts = time.time()
+    cutoff_age = MIN_LISTING_AGE_DAYS * 86400
+    eligible = []
+    skipped_young = 0
+    for p in products:
+        if p.get("contract_type") != "perpetual_futures": continue
+        if p.get("state") != "live": continue
+        sym = p.get("symbol")
+        if not sym or sym in TOKENIZED_STOCKS: continue
+
+        launch = _launch_ts(p)
+        if MIN_LISTING_AGE_DAYS > 0 and launch is not None:
+            if (now_ts - launch) < cutoff_age:
+                skipped_young += 1
+                continue
+        eligible.append(p)
+
+    eligible.sort(key=_turnover, reverse=True)
+    top = eligible[:MAX_SYMBOLS] if MAX_SYMBOLS > 0 else eligible
+    logger.info("Symbol filter: %d total → %d eligible (skipped %d young) → kept top %d by 24h turnover",
+                len(products), len(eligible), skipped_young, len(top))
+    return top
 
 
 def get_daily_candles(symbol: str, limit: int = 3) -> list[dict]:

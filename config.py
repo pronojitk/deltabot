@@ -30,6 +30,10 @@ CANDLE_LIMIT = 300         # bars to fetch per scan
 SCAN_INTERVAL = 60         # seconds between full scans
 REQUEST_DELAY = 0.3        # seconds between API calls to avoid rate limiting
 
+# ─── Symbol universe filters ────────────────────────────────────────────────
+MAX_SYMBOLS           = 40       # keep only the top-N perpetuals by 24h volume
+MIN_LISTING_AGE_DAYS  = 30       # skip newly listed contracts (whippy / unproven)
+
 # EMA periods
 EMA_SHORT = 7
 EMA_LONG = 21
@@ -70,7 +74,7 @@ RISK_PER_TRADE_PCT = 1.0      # unused when FIXED_MARGIN_PER_TRADE is set
 FIXED_MARGIN_PER_TRADE = 40.0 # $40 margin per trade → $1000 notional at 25x
 STOP_LOSS_PCT     = 0.02      # 2%
 TAKE_PROFIT_PCT   = 0.015     # 1.5%
-MAX_HOLD_BARS     = 480       # 480 × 15m = 5 days max (per-symbol override on 1h = 240)
+MAX_HOLD_BARS     = 960       # extended: 960 × 15m = 10 days, gives shorts time to play out
 
 # Real trading costs — applied per trade in ForwardTester
 TAKER_FEE_PCT     = 0.0005    # 0.05% per side (Delta India taker fee)

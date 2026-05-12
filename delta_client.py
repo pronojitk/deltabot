@@ -6,7 +6,7 @@ import logging
 from config import (
     DELTA_BASE_URL, REQUEST_DELAY, CANDLE_LIMIT,
     DELTA_API_KEY, DELTA_API_SECRET, DELTA_REGION,
-    MAX_SYMBOLS, MIN_LISTING_AGE_DAYS,
+    MAX_SYMBOLS, MIN_LISTING_AGE_DAYS, FORCE_INCLUDE_SYMBOLS,
 )
 
 logger = logging.getLogger(__name__)
@@ -176,9 +176,27 @@ def get_perpetual_contracts() -> list[dict]:
 
     eligible.sort(key=_turnover, reverse=True)
     top = eligible[:MAX_SYMBOLS] if MAX_SYMBOLS > 0 else eligible
-    logger.info("Symbol filter: %d total → %d eligible (skipped %d young) → kept top %d by 24h turnover",
-                len(products), len(eligible), skipped_young, len(top))
-    return top
+    top_syms = {p["symbol"] for p in top}
+
+    # Force-include majors (their turnover_usd is None on Delta India, so they'd
+    # otherwise drop to the bottom of the ranking even though they're the most liquid).
+    forced = []
+    for sym in FORCE_INCLUDE_SYMBOLS:
+        if sym in top_syms: continue
+        match = next((p for p in products
+                      if p.get("symbol") == sym
+                      and p.get("contract_type") == "perpetual_futures"
+                      and p.get("state") == "live"), None)
+        if match:
+            forced.append(match)
+            top_syms.add(sym)
+    final = forced + top  # majors first, then volume-ranked tail
+
+    logger.info(
+        "Symbol filter: %d products → %d eligible (skipped %d young) → top %d by turnover + %d forced majors = %d total",
+        len(products), len(eligible), skipped_young, len(top), len(forced), len(final),
+    )
+    return final
 
 
 def get_daily_candles(symbol: str, limit: int = 3) -> list[dict]:

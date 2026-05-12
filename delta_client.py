@@ -121,11 +121,16 @@ def get_perpetual_contracts() -> list[dict]:
     if not data:
         return []
     products = data.get("result", [])
-    TOKENIZED_STOCKS = {
-        "AAPLXUSDT", "TSLAXUSDT", "NVDAXUSDT", "GOOGLXUSDT",
-        "AMZNXUSDT", "METAXUSDT", "MSFTXUSDT", "NFLXUSDT",
-        "COINXUSDT", "MSTRXUSDT", "SPYXUSDT", "QQQXUSDT",
-    }
+    # Tokenized US equities (perpetuals on a stock) — Delta lists them as XYZXUSDT
+    # or XYZXUSD. Their /history/candles endpoint returns no data, so skip.
+    _TOK_STEMS = ["AAPLX", "TSLAX", "NVDAX", "GOOGLX", "AMZNX", "METAX",
+                  "MSFTX", "NFLX", "COINX", "MSTRX", "SPYX", "QQQX",
+                  "AAPL", "TSLA", "NVDA", "GOOGL", "AMZN", "META",
+                  "MSFT", "COIN", "MSTR", "SPY", "QQQ", "CRCLX"]
+    TOKENIZED_STOCKS = set()
+    for stem in _TOK_STEMS:
+        TOKENIZED_STOCKS.add(stem + "USDT")
+        TOKENIZED_STOCKS.add(stem + "USD")
 
     def _launch_ts(p: dict) -> float | None:
         """Best-effort parse of the product's listing date → UTC unix seconds."""

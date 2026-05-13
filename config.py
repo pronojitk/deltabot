@@ -91,7 +91,7 @@ DONCHIAN_PERIOD       = 20    # bars for breakout channel (20 × 4h = 3.3 days)
 DONCHIAN_EXIT_PERIOD  = 10    # bars for tighter exit channel (faster exits)
 ATR_PERIOD            = 14
 ATR_INITIAL_SL_MULT   = 2.0   # initial stop = entry ∓ ATR × this
-ATR_TRAIL_MULT        = 3.0   # trailing stop = high-water ∓ ATR × this
+ATR_TRAIL_MULT        = 5.0   # trailing stop = high-water ∓ ATR × this (was 3.0 — let winners run)
 TREND_FILTER_EMA      = 50    # only LONG when close > EMA50, only SHORT when below
 TRAILING_STOP_ENABLED = True  # use ATR trailing stop instead of fixed TP
 

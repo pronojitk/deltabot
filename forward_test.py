@@ -32,6 +32,7 @@ from config import (
     STARTING_BALANCE, LEVERAGE, RISK_PER_TRADE_PCT, FIXED_MARGIN_PER_TRADE,
     STOP_LOSS_PCT, TAKE_PROFIT_PCT, MAX_HOLD_BARS,
     TAKER_FEE_PCT, SLIPPAGE_PCT, TRAILING_STOP_ENABLED,
+    ATR_TRAIL_MULT, TIGHTEN_TRAIL_AFTER_PCT, TIGHTEN_TRAIL_MULT,
 )
 
 logger = logging.getLogger(__name__)
@@ -288,6 +289,8 @@ class ForwardTester:
             "level_price":    signal.get("level_price"),
             "use_trailing":   use_trailing,
             "trail_distance": float(signal.get("trail_distance", 0)) if use_trailing else 0.0,
+            "atr_at_open":    float(signal.get("atr", 0)),     # remembered for dynamic trail tightening
+            "trail_tightened": False,
             "high_water":     entry,    # peak favorable price seen so far
             "max_hold_bars":  int(signal.get("max_hold_bars", MAX_HOLD_BARS)),
             "status":         "OPEN",
@@ -318,6 +321,30 @@ class ForwardTester:
                 if t["symbol"] != symbol or t["status"] != "OPEN":
                     continue
                 t["bars_held"] += 1
+
+                # Dynamic trail tightening: once unrealised P&L (on margin)
+                # reaches TIGHTEN_TRAIL_AFTER_PCT, narrow the trail distance.
+                if t.get("use_trailing") and not t.get("trail_tightened"):
+                    margin = t.get("margin_usd", 0) or 0
+                    notional = t.get("notional_usd", 0) or 0
+                    if margin > 0 and notional > 0:
+                        entry = t["entry_price"]
+                        if t["side"] == "LONG":
+                            move = (current_price - entry) / entry if entry else 0
+                        else:
+                            move = (entry - current_price) / entry if entry else 0
+                        unreal_pct = (notional * move) / margin * 100
+                        if unreal_pct >= TIGHTEN_TRAIL_AFTER_PCT:
+                            atr = t.get("atr_at_open", 0) or 0
+                            if atr > 0 and ATR_TRAIL_MULT > 0:
+                                new_dist = atr * TIGHTEN_TRAIL_MULT
+                                if new_dist > 0 and new_dist < t["trail_distance"]:
+                                    t["trail_distance"]   = new_dist
+                                    t["trail_tightened"]  = True
+                                    logger.info(
+                                        "Trail tightened for %s %s: %.2f%% reached → trail %sATR (was %sATR)",
+                                        t["side"], t["symbol"], unreal_pct,
+                                        TIGHTEN_TRAIL_MULT, ATR_TRAIL_MULT)
 
                 # Trailing-stop ratchet: tighten SL as price moves favorably
                 if t.get("use_trailing") and t.get("trail_distance", 0) > 0:

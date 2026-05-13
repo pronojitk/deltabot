@@ -2,7 +2,7 @@
 Web-based dashboard for the Delta Exchange Alert Bot.
 
 Run with:  py web_app.py
-Then open: http://127.0.0.1:5000
+Then open: http://127.0.0.1:5000   (or http://<server-ip>:5000 from another machine)
 
 Provides:
   • Live forward-test stats: balance, equity, leverage, P&L, margin

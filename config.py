@@ -147,5 +147,5 @@ def get_params(symbol: str) -> dict:
     return SYMBOL_PARAMS.get(symbol, DEFAULT_PARAMS)
 
 # Web dashboard
-WEB_HOST = "127.0.0.1"
+WEB_HOST = "0.0.0.0"   # bind on all interfaces (works locally + on cloud VM)
 WEB_PORT = 5000

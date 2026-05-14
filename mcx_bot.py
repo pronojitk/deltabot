@@ -50,6 +50,14 @@ MCX_SYMBOLS = [
     "VEDL.NS",          # Base metals (zinc/copper/aluminium)
 ]
 
+# ─── Account (INR-denominated, separate from Delta USD account) ────────────
+MCX_STARTING_BALANCE_INR = 40_000.0   # ₹40,000 starting capital
+MCX_LEVERAGE             = 5          # 5x intraday leverage
+MCX_MARGIN_PER_TRADE_INR = 5_000.0    # ₹5,000 collateral per trade → ₹25,000 notional at 5x
+                                      # → up to 8 concurrent positions
+MCX_TAKER_FEE_PCT        = 0.0005     # 0.05% per side (broker brokerage)
+MCX_SLIPPAGE_PCT         = 0.0005     # 0.05% adverse fill per side
+
 # ─── Strategy parameters ───────────────────────────────────────────────────
 ORB_OPEN       = dtime(9, 15)    # first candle starts
 ORB_CLOSE      = dtime(9, 20)    # first 5-min candle closes here → ORB defined
@@ -57,6 +65,7 @@ MARKET_CLOSE   = dtime(15, 30)   # NSE close
 EOD_FLAT_TIME  = dtime(15, 25)   # auto-flat any open paper trade here
 RR_RATIO       = 2.0             # target = entry + 2 × risk  (1:2)
 SCAN_INTERVAL  = 60              # seconds between yfinance polls
+MAX_TRADES_PER_SYMBOL_PER_DAY = 2   # allow up to N trades on the same symbol per day
 
 logging.basicConfig(
     level=logging.INFO,
@@ -72,12 +81,14 @@ class MCXBot:
         self.orb         : dict[str, dict] = {}    # sym -> ORB dict
         self.positions   : dict[str, dict] = {}    # sym -> open paper trade
         self.history     : list[dict]      = []
-        self.alerted_today: set[str]       = set() # (sym, side) keys
+        self.trades_today : dict[str, int] = {}   # sym -> trade count today
         self._day        : str | None      = None
         self.on_event    = on_event or (lambda e: None)
         self.send_telegram = send_telegram
         self._running    = False
         self._thread     : threading.Thread | None = None
+        # ── Account ──
+        self.balance_inr : float = MCX_STARTING_BALANCE_INR
 
     # ──────────────────────────────────────────────────── lifecycle
     def start(self) -> None:
@@ -186,13 +197,36 @@ class MCXBot:
             hit = ("EOD", last)
         if hit:
             reason, exit_price = hit
-            pnl_pct = ((exit_price - t["entry"]) / t["entry"] * 100) \
-                      * (1 if t["side"] == "LONG" else -1)
-            t.update({"exit_price": exit_price, "exit_reason": reason,
-                      "pnl_pct": pnl_pct, "exit_time": now,
-                      "status": "WIN" if reason == "TP" else "LOSS" if reason == "SL" else "TIMEOUT"})
-            logger.info("CLOSE %s %s @ %.2f reason=%s P&L=%.2f%%",
-                        symbol, t["side"], exit_price, reason, pnl_pct)
+            # Apply exit slippage (longs exit BELOW, shorts exit ABOVE)
+            if t["side"] == "LONG":
+                fill = exit_price * (1 - MCX_SLIPPAGE_PCT)
+                move_pct = (fill - t["entry"]) / t["entry"]
+            else:
+                fill = exit_price * (1 + MCX_SLIPPAGE_PCT)
+                move_pct = (t["entry"] - fill) / t["entry"]
+
+            notional = t.get("notional_inr", 0.0)
+            margin   = t.get("margin_inr", 0.0)
+            gross_pnl_inr = notional * move_pct
+            fees_inr      = notional * MCX_TAKER_FEE_PCT * 2
+            pnl_inr       = gross_pnl_inr - fees_inr
+            pnl_pct_margin = (pnl_inr / margin * 100) if margin else 0.0
+            pnl_pct_price  = move_pct * 100
+            self.balance_inr += pnl_inr
+
+            t.update({
+                "exit_price": fill, "exit_reason": reason, "exit_time": now,
+                "pnl_inr": round(pnl_inr, 2),
+                "fees_inr": round(fees_inr, 2),
+                "pnl_pct": round(pnl_pct_margin, 4),    # return on margin (leveraged)
+                "pnl_price_pct": round(pnl_pct_price, 4),
+                "balance_after_inr": round(self.balance_inr, 2),
+                "status": "WIN" if reason == "TP" else "LOSS" if reason == "SL" else "TIMEOUT",
+            })
+            logger.info(
+                "CLOSE %s %s @ %.2f reason=%s P&L=₹%.2f (%.2f%% on margin) | bal=₹%.2f",
+                symbol, t["side"], fill, reason, pnl_inr, pnl_pct_margin, self.balance_inr,
+            )
             self.history.append(dict(t))
             self.positions.pop(symbol, None)
             self._emit("mcx_closed", trade=dict(t))
@@ -203,11 +237,17 @@ class MCXBot:
             self._day = today_str
             self.orb.clear()
             self.positions.clear()
-            self.alerted_today.clear()
+            self.trades_today.clear()
             logger.info("=== New trading day: %s ===", today_str)
 
     def get_state(self) -> dict:
         """Snapshot for the web UI."""
+        wins   = [t for t in self.history if t.get("status") == "WIN"]
+        losses = [t for t in self.history if t.get("status") == "LOSS"]
+        timeouts = [t for t in self.history if t.get("status") == "TIMEOUT"]
+        closed = wins + losses + timeouts
+        realized = sum(t.get("pnl_inr", 0) or 0 for t in closed)
+        wr = (len(wins) / len(closed) * 100) if closed else 0.0
         return {
             "running":        self._running,
             "symbols":        list(self.symbols),
@@ -216,6 +256,20 @@ class MCXBot:
             "open_positions": [self._serialize(t) for t in self.positions.values()],
             "history":        [self._serialize(t) for t in self.history[-50:]],
             "today":          self._day,
+            "account": {
+                "starting_balance_inr": MCX_STARTING_BALANCE_INR,
+                "balance_inr":          round(self.balance_inr, 2),
+                "leverage":             MCX_LEVERAGE,
+                "margin_per_trade_inr": MCX_MARGIN_PER_TRADE_INR,
+                "realized_pnl_inr":     round(realized, 2),
+                "total_pnl_pct":        round((self.balance_inr - MCX_STARTING_BALANCE_INR) /
+                                              MCX_STARTING_BALANCE_INR * 100, 2),
+                "trades":   len(self.history),
+                "wins":     len(wins),
+                "losses":   len(losses),
+                "timeouts": len(timeouts),
+                "win_rate": round(wr, 1),
+            },
         }
 
     def _serialize(self, t: dict) -> dict:
@@ -257,39 +311,60 @@ class MCXBot:
 
             orb = self.orb[sym]
 
-            # Already alerted both sides? Skip.
-            already = (sym, "LONG") in self.alerted_today and (sym, "SHORT") in self.alerted_today
-            if already or sym in self.positions:
+            # Daily cap: max N trades per symbol per day
+            taken = self.trades_today.get(sym, 0)
+            if taken >= MAX_TRADES_PER_SYMBOL_PER_DAY:
+                continue
+            # Don't pile a new trade on top of an existing OPEN one for this symbol
+            if sym in self.positions:
                 continue
 
             sig = self._check_signal(df, orb, today)
             if not sig: continue
-            key = (sym, sig["side"])
-            if key in self.alerted_today:
-                continue
 
-            self.alerted_today.add(key)
+            self.trades_today[sym] = taken + 1
             self._open_trade(sym, sig, orb)
 
     # ─────────────────────────────────────────────────────────── alert + paper-trade
     def _open_trade(self, symbol, sig, orb):
+        # ── Sizing in INR (capped by available balance) ──
+        margin   = min(MCX_MARGIN_PER_TRADE_INR, max(0.0, self.balance_inr))
+        notional = margin * MCX_LEVERAGE
+        # Apply entry slippage
+        if sig["side"] == "LONG":
+            entry_fill = sig["entry"] * (1 + MCX_SLIPPAGE_PCT)
+        else:
+            entry_fill = sig["entry"] * (1 - MCX_SLIPPAGE_PCT)
+        qty = notional / entry_fill if entry_fill else 0.0
+
         trade = {
-            "symbol":     symbol,
-            "side":       sig["side"],
-            "entry":      sig["entry"],
-            "entry_time": sig["ts"],
-            "sl":         sig["sl"],
-            "tp":         sig["tp"],
-            "risk":       sig["risk"],
-            "rr":         RR_RATIO,
-            "orb_high":   orb["high"],
-            "orb_low":    orb["low"],
+            "symbol":       symbol,
+            "side":         sig["side"],
+            "entry":        round(entry_fill, 4),
+            "entry_time":   sig["ts"],
+            "sl":           sig["sl"],
+            "tp":           sig["tp"],
+            "risk":         sig["risk"],
+            "rr":           RR_RATIO,
+            "orb_high":     orb["high"],
+            "orb_low":      orb["low"],
+            # Account / sizing
+            "leverage":     MCX_LEVERAGE,
+            "margin_inr":   round(margin, 2),
+            "notional_inr": round(notional, 2),
+            "qty":          round(qty, 4),
+            "status":       "OPEN",
         }
+        if margin <= 0:
+            logger.warning("Insufficient INR balance for new MCX trade on %s", symbol)
+            return
         self.positions[symbol] = trade
 
-        logger.info("SIGNAL %s %s entry=%.2f SL=%.2f TP=%.2f (risk=%.2f, R:R=1:%.0f)",
-                    symbol, sig["side"], sig["entry"], sig["sl"], sig["tp"],
-                    sig["risk"], RR_RATIO)
+        logger.info(
+            "SIGNAL %s %s @ %.2f SL=%.2f TP=%.2f | margin=₹%.0f notional=₹%.0f qty=%.2f (1:%.0f)",
+            symbol, sig["side"], entry_fill, sig["sl"], sig["tp"],
+            margin, notional, qty, RR_RATIO,
+        )
 
         self._emit("mcx_signal", trade=self._serialize(trade))
 
@@ -298,16 +373,25 @@ class MCXBot:
             return
         try:
             send_alert(symbol, {
-                "type":        "BREAKOUT" if sig["side"] == "LONG" else "BREAKDOWN",
-                "close":       sig["entry"],
-                "level_label": f"ORB-{'High' if sig['side']=='LONG' else 'Low'}",
-                "level_price": orb["high"] if sig["side"] == "LONG" else orb["low"],
-                "tests":       1,
-                "ema7":        None, "ema21": None,
-                "entropy":     None, "regime": "ORB",
-                "time":        int(sig["ts"].timestamp()),
-                "sl":          sig["sl"],
-                "tp":          sig["tp"],
+                "type":         "BREAKOUT" if sig["side"] == "LONG" else "BREAKDOWN",
+                "side":         sig["side"],
+                "entry":        trade["entry"],
+                "close":        trade["entry"],
+                "sl":           sig["sl"],
+                "tp":           sig["tp"],
+                "rr":           RR_RATIO,
+                "level_label":  f"ORB-{'High' if sig['side']=='LONG' else 'Low'}",
+                "level_price":  orb["high"] if sig["side"] == "LONG" else orb["low"],
+                "orb_high":     orb["high"],
+                "orb_low":      orb["low"],
+                "regime":       "ORB",
+                "strategy":     "MCX-ORB",
+                "timeframe":    "5m IST",
+                "time":         int(sig["ts"].timestamp()),
+                "leverage":     MCX_LEVERAGE,
+                "margin_inr":   trade["margin_inr"],
+                "notional_inr": trade["notional_inr"],
+                "currency":     "₹",
             })
         except Exception as e:
             logger.warning("Telegram send failed: %s", e)

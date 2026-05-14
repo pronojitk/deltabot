@@ -246,31 +246,48 @@ def api_screener():
 
 @app.route("/api/strategies")
 def api_strategies():
-    """Per-strategy performance breakdown (Donchian vs Gold, etc)."""
+    """Per-strategy breakdown — includes ALL strategies in the active universe,
+    even ones with no trades yet."""
     from config import get_params
-    trades = state.tester.trades
+
+    def _empty(name: str) -> dict:
+        return {"strategy": name, "trades": 0, "open": 0, "wins": 0,
+                "losses": 0, "timeouts": 0, "realized_pnl": 0.0,
+                "symbols": set(), "win_rate": 0.0}
+
     by_strat: dict[str, dict] = {}
-    for t in trades:
+
+    # Seed with every strategy that exists in the currently scanned universe,
+    # even if no trades have fired for it yet.
+    for sym in state.symbols or []:
+        strat = get_params(sym).get("strategy", "donchian")
+        s = by_strat.setdefault(strat, _empty(strat))
+        s["symbols"].add(sym)
+
+    # Always include built-in strategies even if not yet routed (UX nicety)
+    for built_in in ("donchian", "gold"):
+        by_strat.setdefault(built_in, _empty(built_in))
+
+    # Tally trades
+    for t in state.tester.trades:
         strat = get_params(t["symbol"]).get("strategy", "donchian")
-        s = by_strat.setdefault(strat, {
-            "strategy": strat, "trades": 0, "open": 0, "wins": 0, "losses": 0,
-            "timeouts": 0, "realized_pnl": 0.0, "symbols": set(),
-        })
+        s = by_strat.setdefault(strat, _empty(strat))
         s["trades"] += 1
         s["symbols"].add(t["symbol"])
-        if t["status"] == "OPEN":   s["open"] += 1
-        elif t["status"] == "WIN":  s["wins"] += 1; s["realized_pnl"] += t.get("pnl_usd") or 0
-        elif t["status"] == "LOSS": s["losses"] += 1; s["realized_pnl"] += t.get("pnl_usd") or 0
+        if t["status"] == "OPEN":      s["open"] += 1
+        elif t["status"] == "WIN":     s["wins"] += 1;     s["realized_pnl"] += t.get("pnl_usd") or 0
+        elif t["status"] == "LOSS":    s["losses"] += 1;   s["realized_pnl"] += t.get("pnl_usd") or 0
         elif t["status"] == "TIMEOUT": s["timeouts"] += 1; s["realized_pnl"] += t.get("pnl_usd") or 0
 
     out = []
     for s in by_strat.values():
         closed = s["wins"] + s["losses"] + s["timeouts"]
-        s["win_rate"] = round(s["wins"]/closed*100, 1) if closed else 0.0
+        s["win_rate"]     = round(s["wins"]/closed*100, 1) if closed else 0.0
         s["realized_pnl"] = round(s["realized_pnl"], 2)
-        s["symbols"] = len(s["symbols"])
+        s["symbols"]      = len(s["symbols"])
         out.append(s)
-    out.sort(key=lambda r: -r["realized_pnl"])
+    # Active strategies (with trades) first, then idle ones
+    out.sort(key=lambda r: (r["trades"] == 0, -r["realized_pnl"], r["strategy"]))
     return jsonify(out)
 
 

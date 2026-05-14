@@ -242,9 +242,18 @@ class BotEngine:
                         if trade:
                             self._emit("trade_opened", trade=trade)
 
-                    # Send Telegram alert with cooldown
+                    # Send Telegram alert with cooldown — enrich with sizing + strategy context
                     if self.send_telegram and not self._is_on_cooldown(symbol, sig["type"]):
-                        if send_alert(symbol, sig):
+                        from config import LEVERAGE, FIXED_MARGIN_PER_TRADE
+                        params = get_params(symbol)
+                        enriched = dict(sig)
+                        enriched.setdefault("strategy", params.get("strategy", "donchian").title())
+                        enriched.setdefault("timeframe", params.get("timeframe", ""))
+                        enriched.setdefault("leverage",  LEVERAGE)
+                        enriched.setdefault("margin_usd",   FIXED_MARGIN_PER_TRADE)
+                        enriched.setdefault("notional_usd", FIXED_MARGIN_PER_TRADE * LEVERAGE)
+                        enriched.setdefault("currency", "$")
+                        if send_alert(symbol, enriched):
                             self._mark_alerted(symbol, sig["type"])
                             alert_count += 1
                             self._emit("alert_sent", symbol=symbol, signal=sig)

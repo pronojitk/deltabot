@@ -530,6 +530,15 @@
           <span style="font-size:11px;color:var(--muted);">Source: <b style="color:var(--text);">yfinance</b></span>
           <span id="mcx-status" style="margin-left:auto;font-size:11px;color:var(--muted);">—</span>
         </div>
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;">
+          <div><div style="font-size:9px;color:var(--muted);letter-spacing:1.2px;">BALANCE</div><div style="font-size:15px;font-weight:600;color:var(--orange2);" id="mcx-balance">—</div></div>
+          <div><div style="font-size:9px;color:var(--muted);letter-spacing:1.2px;">REALIZED P&L</div><div style="font-size:15px;font-weight:600;" id="mcx-pnl">—</div></div>
+          <div><div style="font-size:9px;color:var(--muted);letter-spacing:1.2px;">P&L %</div><div style="font-size:15px;font-weight:600;" id="mcx-pnl-pct">—</div></div>
+          <div><div style="font-size:9px;color:var(--muted);letter-spacing:1.2px;">LEVERAGE</div><div style="font-size:15px;font-weight:600;" id="mcx-leverage">—</div></div>
+          <div><div style="font-size:9px;color:var(--muted);letter-spacing:1.2px;">MARGIN/TRADE</div><div style="font-size:15px;font-weight:600;" id="mcx-margin">—</div></div>
+          <div><div style="font-size:9px;color:var(--muted);letter-spacing:1.2px;">TRADES</div><div style="font-size:15px;font-weight:600;" id="mcx-trades">—</div></div>
+          <div><div style="font-size:9px;color:var(--muted);letter-spacing:1.2px;">WIN RATE</div><div style="font-size:15px;font-weight:600;" id="mcx-wr">—</div></div>
+        </div>
         <div style="padding:10px 14px;">
           <div style="font-size:10px;color:var(--muted);letter-spacing:1.2px;margin-bottom:6px;">TODAY'S OPENING RANGES</div>
           <div id="mcx-orbs" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px;font-size:11px;">
@@ -539,13 +548,13 @@
         <div style="padding:6px 14px 4px;font-size:10px;color:var(--muted);letter-spacing:1.2px;">OPEN POSITIONS</div>
         <table id="mcx-open-table">
           <thead><tr><th>Symbol</th><th>Side</th><th>Entry</th><th>SL</th><th>TP</th>
-            <th>ORB Range</th><th>Risk</th><th>Time</th></tr></thead>
+            <th>Qty</th><th>Margin</th><th>Notional</th><th>ORB Range</th><th>Time</th></tr></thead>
           <tbody></tbody>
         </table>
         <div style="padding:6px 14px 4px;font-size:10px;color:var(--muted);letter-spacing:1.2px;">RECENT TRADES</div>
         <table id="mcx-history-table">
           <thead><tr><th>Symbol</th><th>Side</th><th>Status</th><th>Entry</th><th>Exit</th>
-            <th>P&L %</th><th>Reason</th><th>Time</th></tr></thead>
+            <th>P&L ₹</th><th>P&L % (margin)</th><th>Reason</th><th>Time</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -897,13 +906,13 @@ async function refreshSignals() {
 }
 
 async function refreshTrades() {
-  const r = await fetch('/api/trades'); const ts = await r.json();
+  const r = await fetch('/api/trades'); const all = await r.json();
+  // Trade History = closed trades only. Open trades live in the Open Positions tab.
+  const ts = all.filter(t => t.status !== 'OPEN');
   $('trades-table').querySelector('tbody').innerHTML = ts.map(t => {
-    const isOpen = t.status === 'OPEN';
-    const pnlUsd = isOpen ? t.pnl_usd_live : t.pnl_usd;
-    const pnlPct = isOpen ? t.pnl_pct_live : t.pnl_pct;
-    const exitOrLive = isOpen ? (t.current_price != null ? fmtNum(t.current_price) : '—')
-                              : (t.exit_price != null ? fmtNum(t.exit_price) : '—');
+    const pnlUsd = t.pnl_usd;
+    const pnlPct = t.pnl_pct;
+    const exitOrLive = t.exit_price != null ? fmtNum(t.exit_price) : '—';
     return `<tr>
       <td><b>${t.symbol}</b></td>
       <td><span class="pill ${t.side}">${t.side}</span></td>
@@ -921,17 +930,28 @@ async function refreshTrades() {
 
 async function refreshStrategies() {
   const r = await fetch('/api/strategies'); const data = await r.json();
-  $('strat-count').textContent = data.length + ' active';
+  const active = data.filter(s => s.trades > 0).length;
+  $('strat-count').textContent = `${data.length} total · ${active} active`;
   if (!data.length) {
-    $('strat-list').innerHTML = '<div style="color:var(--muted);font-size:11px;text-align:center;padding:14px;">No trades yet</div>';
+    $('strat-list').innerHTML = '<div style="color:var(--muted);font-size:11px;text-align:center;padding:14px;">No strategies loaded</div>';
     return;
   }
-  $('strat-list').innerHTML = data.map(s => `
-    <div style="display:grid;grid-template-columns:auto 1fr auto;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border);">
-      <div style="font-size:11px;font-weight:700;color:var(--orange);text-transform:uppercase;">${s.strategy}</div>
-      <div style="font-size:10px;color:var(--muted);">${s.symbols} sym · ${s.trades}T · ${s.open}o · W${s.wins}/L${s.losses}</div>
-      <div class="${cls(s.realized_pnl)}" style="font-size:12px;font-weight:600;">${fmt$(s.realized_pnl)}</div>
-    </div>`).join('');
+  $('strat-list').innerHTML = data.map(s => {
+    const idle = s.trades === 0;
+    const opacity = idle ? 'opacity:0.55;' : '';
+    const pnlCls = idle ? 'neutral' : cls(s.realized_pnl);
+    const pnlText = idle ? '—' : fmt$(s.realized_pnl);
+    const stats = idle
+      ? `${s.symbols} sym · idle`
+      : `${s.symbols} sym · ${s.trades}T · ${s.open}o · W${s.wins}/L${s.losses}` +
+        (s.win_rate ? ` · ${s.win_rate}%` : '');
+    return `
+      <div style="display:grid;grid-template-columns:auto 1fr auto;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border);${opacity}">
+        <div style="font-size:11px;font-weight:700;color:var(--orange);text-transform:uppercase;">${s.strategy}</div>
+        <div style="font-size:10px;color:var(--muted);">${stats}</div>
+        <div class="${pnlCls}" style="font-size:12px;font-weight:600;">${pnlText}</div>
+      </div>`;
+  }).join('');
 }
 
 let _screenerFilter = 'ALL';
@@ -982,6 +1002,22 @@ async function refreshMCX() {
   $('mcx-status').textContent = (d.running ? '● RUNNING' : '○ IDLE') + ' · ' + (d.symbols||[]).length + ' symbols';
   $('mcx-status').style.color = d.running ? 'var(--green)' : 'var(--muted)';
 
+  // Account
+  const acct = d.account || {};
+  const fmtINR = v => (v == null) ? '—' : '₹' + (+v).toLocaleString('en-IN', {minimumFractionDigits:2,maximumFractionDigits:2});
+  $('mcx-balance').textContent = fmtINR(acct.balance_inr);
+  $('mcx-pnl').textContent     = fmtINR(acct.realized_pnl_inr);
+  $('mcx-pnl').className       = '';
+  $('mcx-pnl').style.color     = (acct.realized_pnl_inr || 0) > 0 ? 'var(--green)'
+                               : (acct.realized_pnl_inr || 0) < 0 ? 'var(--red)' : 'var(--text)';
+  $('mcx-pnl-pct').textContent = (acct.total_pnl_pct != null ? (acct.total_pnl_pct >= 0 ? '+' : '') + acct.total_pnl_pct.toFixed(2) + '%' : '—');
+  $('mcx-pnl-pct').style.color = (acct.total_pnl_pct || 0) > 0 ? 'var(--green)'
+                               : (acct.total_pnl_pct || 0) < 0 ? 'var(--red)' : 'var(--text)';
+  $('mcx-leverage').textContent = (acct.leverage || '—') + 'x';
+  $('mcx-margin').textContent   = fmtINR(acct.margin_per_trade_inr);
+  $('mcx-trades').textContent   = acct.trades + ' (W' + acct.wins + '/L' + acct.losses + ')';
+  $('mcx-wr').textContent       = (acct.win_rate != null ? acct.win_rate + '%' : '—');
+
   // ORB ranges
   const orbs = d.orb || {};
   const orbHtml = Object.keys(orbs).length
@@ -1002,15 +1038,18 @@ async function refreshMCX() {
       <td>${(+t.entry).toFixed(2)}</td>
       <td>${(+t.sl).toFixed(2)}</td>
       <td>${(+t.tp).toFixed(2)}</td>
+      <td>${t.qty != null ? (+t.qty).toFixed(2) : '—'}</td>
+      <td>${t.margin_inr != null ? fmtINR(t.margin_inr) : '—'}</td>
+      <td>${t.notional_inr != null ? fmtINR(t.notional_inr) : '—'}</td>
       <td>${(+t.orb_low).toFixed(2)} – ${(+t.orb_high).toFixed(2)}</td>
-      <td>${(+t.risk).toFixed(2)}</td>
       <td style="color:var(--muted);font-size:10px;">${(t.entry_time||'').replace('T',' ').slice(5,16)}</td>
-    </tr>`).join('') || '<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:14px;">No open MCX positions</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="10" style="color:var(--muted);text-align:center;padding:14px;">No open MCX positions</td></tr>';
 
   // History
   const hist = (d.history || []).slice().reverse();
   $('mcx-history-table').querySelector('tbody').innerHTML = hist.map(t => {
-    const c = (+t.pnl_pct) > 0 ? 'pos' : (+t.pnl_pct) < 0 ? 'neg' : 'neutral';
+    const pnl = t.pnl_inr;
+    const c = (pnl > 0) ? 'pos' : (pnl < 0) ? 'neg' : 'neutral';
     const stCls = t.status === 'WIN' ? 'WIN' : t.status === 'LOSS' ? 'LOSS' : 'TIMEOUT';
     return `<tr>
       <td><b>${t.symbol}</b></td>
@@ -1018,11 +1057,12 @@ async function refreshMCX() {
       <td><span class="pill ${stCls}">${t.status || '—'}</span></td>
       <td>${(+t.entry).toFixed(2)}</td>
       <td>${t.exit_price != null ? (+t.exit_price).toFixed(2) : '—'}</td>
+      <td class="${c}">${pnl != null ? fmtINR(pnl) : '—'}</td>
       <td class="${c}">${t.pnl_pct != null ? (+t.pnl_pct).toFixed(2)+'%' : '—'}</td>
       <td>${t.exit_reason || '—'}</td>
       <td style="color:var(--muted);font-size:10px;">${(t.exit_time||'').replace('T',' ').slice(5,16)}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:14px;">No MCX trades yet</td></tr>';
+  }).join('') || '<tr><td colspan="9" style="color:var(--muted);text-align:center;padding:14px;">No MCX trades yet</td></tr>';
 }
 
 async function refreshLogs() {

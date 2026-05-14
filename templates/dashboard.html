@@ -501,7 +501,7 @@
       </div>
       <div class="sub-tab-content active" id="sub-positions">
         <table id="open-table">
-          <thead><tr><th>Symbol</th><th>Side</th><th>Entry</th><th>Now</th>
+          <thead><tr><th>Symbol</th><th>Side</th><th>Entry Time</th><th>Entry</th><th>Now</th>
             <th>Qty</th><th>Lots</th><th>Notional</th><th>Margin</th>
             <th>P&L $</th><th>P&L %</th><th>SL</th><th>TP</th><th>Bars</th></tr></thead>
           <tbody></tbody>
@@ -868,11 +868,23 @@ async function refreshState() {
   // Position bars
   renderPosBars(open_trades);
 
-  // Bottom open positions table
-  $('open-table').querySelector('tbody').innerHTML = open_trades.map(t => `
+  // Bottom open positions table — newest entry first
+  const fmtDT = ts => {
+    if (!ts) return '—';
+    const d = new Date(+ts * 1000);
+    return d.toLocaleString('en-IN', {
+      year:'2-digit', month:'short', day:'2-digit',
+      hour:'2-digit', minute:'2-digit', hour12:false
+    });
+  };
+  const sortedOpen = (open_trades || []).slice().sort(
+    (a, b) => (b.entry_time || 0) - (a.entry_time || 0)
+  );
+  $('open-table').querySelector('tbody').innerHTML = sortedOpen.map(t => `
     <tr>
       <td><b>${t.symbol}</b></td>
       <td><span class="pill ${t.side}">${t.side}</span></td>
+      <td style="color:var(--muted);font-size:10px;">${fmtDT(t.entry_time)}</td>
       <td>${fmtNum(t.entry_price)}</td>
       <td>${fmtNum(t.current_price)}</td>
       <td>${fmtNum(t.qty)}</td>
@@ -884,7 +896,7 @@ async function refreshState() {
       <td>${fmtNum(t.sl)}</td>
       <td>${fmtNum(t.tp)}</td>
       <td>${t.bars_held}</td>
-    </tr>`).join('') || '<tr><td colspan="13" style="color:var(--muted);text-align:center;padding:18px;">No open positions</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="14" style="color:var(--muted);text-align:center;padding:18px;">No open positions</td></tr>';
 }
 
 async function refreshEquity() {

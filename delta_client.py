@@ -6,7 +6,7 @@ import logging
 from config import (
     DELTA_BASE_URL, REQUEST_DELAY, CANDLE_LIMIT,
     DELTA_API_KEY, DELTA_API_SECRET, DELTA_REGION,
-    MAX_SYMBOLS, MIN_LISTING_AGE_DAYS, FORCE_INCLUDE_SYMBOLS,
+    MAX_SYMBOLS, MIN_LISTING_AGE_DAYS, FORCE_INCLUDE_SYMBOLS, SKIP_SYMBOLS,
 )
 
 logger = logging.getLogger(__name__)
@@ -159,13 +159,18 @@ def get_perpetual_contracts() -> list[dict]:
 
     now_ts = time.time()
     cutoff_age = MIN_LISTING_AGE_DAYS * 86400
+    skip_set = set(SKIP_SYMBOLS or [])
     eligible = []
     skipped_young = 0
+    skipped_black = 0
     for p in products:
         if p.get("contract_type") != "perpetual_futures": continue
         if p.get("state") != "live": continue
         sym = p.get("symbol")
         if not sym or sym in TOKENIZED_STOCKS: continue
+        if sym in skip_set:
+            skipped_black += 1
+            continue
 
         launch = _launch_ts(p)
         if MIN_LISTING_AGE_DAYS > 0 and launch is not None:
@@ -180,9 +185,10 @@ def get_perpetual_contracts() -> list[dict]:
 
     # Force-include majors (their turnover_usd is None on Delta India, so they'd
     # otherwise drop to the bottom of the ranking even though they're the most liquid).
+    # Blacklisted symbols are NOT force-included.
     forced = []
     for sym in FORCE_INCLUDE_SYMBOLS:
-        if sym in top_syms: continue
+        if sym in top_syms or sym in skip_set: continue
         match = next((p for p in products
                       if p.get("symbol") == sym
                       and p.get("contract_type") == "perpetual_futures"
@@ -193,8 +199,8 @@ def get_perpetual_contracts() -> list[dict]:
     final = forced + top  # majors first, then volume-ranked tail
 
     logger.info(
-        "Symbol filter: %d products → %d eligible (skipped %d young) → top %d by turnover + %d forced majors = %d total",
-        len(products), len(eligible), skipped_young, len(top), len(forced), len(final),
+        "Symbol filter: %d products → %d eligible (skipped %d young, %d blacklisted) → top %d by turnover + %d forced majors = %d total",
+        len(products), len(eligible), skipped_young, skipped_black, len(top), len(forced), len(final),
     )
     return final
 

@@ -33,6 +33,12 @@ REQUEST_DELAY = 0.3        # seconds between API calls to avoid rate limiting
 # ─── Symbol universe filters ────────────────────────────────────────────────
 MAX_SYMBOLS           = 40       # keep only the top-N perpetuals by 24h volume
 MIN_LISTING_AGE_DAYS  = 30       # skip newly listed contracts (whippy / unproven)
+# Hard blacklist: never trade these even if they make the volume cut.
+# Common reasons: thin order books, manipulative price action, repeated SL hits in backtest.
+SKIP_SYMBOLS          = [
+    "FFUSD",       # consistent whipsaw losses
+    "RIVERUSD",    # same pattern
+]
 # Always include these majors, even when their turnover field is null on Delta India.
 FORCE_INCLUDE_SYMBOLS = [
     "BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD", "BNBUSD", "DOGEUSD",

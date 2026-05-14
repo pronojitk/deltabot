@@ -285,7 +285,26 @@ def api_strategies():
         s["win_rate"]     = round(s["wins"]/closed*100, 1) if closed else 0.0
         s["realized_pnl"] = round(s["realized_pnl"], 2)
         s["symbols"]      = len(s["symbols"])
+        s["currency"]     = "$"
         out.append(s)
+
+    # Append MCX-ORB (it has its own engine/account, separate from Delta)
+    if state.mcx_engine:
+        snap = state.mcx_engine.get_state()
+        acct = snap.get("account", {})
+        out.append({
+            "strategy":     "MCX-ORB",
+            "trades":       acct.get("trades", 0) + len(snap.get("open_positions", [])),
+            "open":         len(snap.get("open_positions", [])),
+            "wins":         acct.get("wins", 0),
+            "losses":       acct.get("losses", 0),
+            "timeouts":     acct.get("timeouts", 0),
+            "realized_pnl": acct.get("realized_pnl_inr", 0.0),
+            "win_rate":     acct.get("win_rate", 0.0),
+            "symbols":      len(snap.get("symbols", [])),
+            "currency":     "₹",
+        })
+
     # Active strategies (with trades) first, then idle ones
     out.sort(key=lambda r: (r["trades"] == 0, -r["realized_pnl"], r["strategy"]))
     return jsonify(out)

@@ -936,11 +936,14 @@ async function refreshStrategies() {
     $('strat-list').innerHTML = '<div style="color:var(--muted);font-size:11px;text-align:center;padding:14px;">No strategies loaded</div>';
     return;
   }
+  const fmtCur = (v, sym) => (v == null) ? '—' :
+    (sym === '₹' ? '₹' + (+v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})
+                 : '$' + (+v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}));
   $('strat-list').innerHTML = data.map(s => {
     const idle = s.trades === 0;
     const opacity = idle ? 'opacity:0.55;' : '';
     const pnlCls = idle ? 'neutral' : cls(s.realized_pnl);
-    const pnlText = idle ? '—' : fmt$(s.realized_pnl);
+    const pnlText = idle ? '—' : fmtCur(s.realized_pnl, s.currency || '$');
     const stats = idle
       ? `${s.symbols} sym · idle`
       : `${s.symbols} sym · ${s.trades}T · ${s.open}o · W${s.wins}/L${s.losses}` +

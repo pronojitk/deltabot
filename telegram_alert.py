@@ -103,6 +103,26 @@ def send_alert(symbol: str, signal: dict) -> bool:
     use_trailing = bool(signal.get("use_trailing"))
     trail_dist = signal.get("trail_distance")
 
+    # Per-trade $/₹ risk and reward (need notional)
+    notional = signal.get("notional_usd") or signal.get("notional_inr") or 0
+    sl_amount = tp_amount = None
+    if notional and entry:
+        try:
+            entry_f = float(entry)
+            if sl is not None:
+                move = abs(float(sl) - entry_f) / entry_f
+                sl_amount = -move * float(notional)        # always negative (loss)
+            if tp is not None and not use_trailing:
+                move = abs(float(tp) - entry_f) / entry_f
+                tp_amount = move * float(notional)         # always positive (gain)
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
+
+    def _amt(v):
+        if v is None: return ""
+        sign = "+" if v > 0 else ""
+        return f"{sign}{currency}{v:,.2f}"
+
     # ── Build message ─────────────────────────────────────────
     lines = []
     lines.append(f"{head_emoji} *{side} ENTRY* {side_emoji} `{symbol}`")
@@ -110,10 +130,11 @@ def send_alert(symbol: str, signal: dict) -> bool:
     lines.append(f"📍 *Entry* `{_fmt_price(entry)}`")
 
     if sl is not None:
-        risk_pct = sl_pct.lstrip("+-") if sl_pct else "—"
-        lines.append(f"🛑 *Stop Loss* `{_fmt_price(sl)}`   _({sl_pct})_")
+        sl_amt = f" · {_amt(sl_amount)}" if sl_amount is not None else ""
+        lines.append(f"🛑 *Stop Loss* `{_fmt_price(sl)}`   _({sl_pct}{sl_amt})_")
     if tp is not None and not use_trailing:
-        lines.append(f"🎯 *Target* `{_fmt_price(tp)}`   _({tp_pct})_")
+        tp_amt = f" · {_amt(tp_amount)}" if tp_amount is not None else ""
+        lines.append(f"🎯 *Target* `{_fmt_price(tp)}`   _({tp_pct}{tp_amt})_")
     elif use_trailing:
         atr = signal.get("atr")
         mult = None

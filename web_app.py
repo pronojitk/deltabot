@@ -349,6 +349,67 @@ def api_strategies():
     return jsonify(out)
 
 
+@app.route("/api/symbol_pnl")
+def api_symbol_pnl():
+    """Per-symbol P&L breakdown for the dashboard."""
+    rows: dict[str, dict] = {}
+    for t in state.tester.trades:
+        sym = t.get("symbol", "?")
+        r = rows.setdefault(sym, {
+            "symbol":  sym,
+            "trades":  0, "open": 0, "wins": 0, "losses": 0, "timeouts": 0,
+            "pnl":     0.0,
+            "wins_pnl":  0.0,
+            "losses_pnl": 0.0,
+            "best":  None, "worst": None,
+            "last_ts": 0,
+        })
+        r["trades"] += 1
+        ts = t.get("entry_time") or 0
+        if ts and ts > r["last_ts"]: r["last_ts"] = ts
+        st = t.get("status")
+        if st == "OPEN":
+            r["open"] += 1
+            continue
+        p = t.get("pnl_usd") or 0
+        r["pnl"] += p
+        if st == "WIN":
+            r["wins"] += 1; r["wins_pnl"]   += p
+        elif st == "LOSS":
+            r["losses"] += 1; r["losses_pnl"] += p
+        elif st == "TIMEOUT":
+            r["timeouts"] += 1
+        # Best / worst
+        if r["best"]  is None or p > r["best"]:  r["best"]  = p
+        if r["worst"] is None or p < r["worst"]: r["worst"] = p
+
+    out = []
+    for r in rows.values():
+        closed = r["wins"] + r["losses"] + r["timeouts"]
+        avg_win  = (r["wins_pnl"]   / r["wins"])  if r["wins"]   else 0.0
+        avg_loss = (r["losses_pnl"] / r["losses"]) if r["losses"] else 0.0
+        pf = (r["wins_pnl"] / -r["losses_pnl"]) if r["losses_pnl"] < 0 else (float("inf") if r["wins_pnl"] > 0 else 0.0)
+        out.append({
+            "symbol":    r["symbol"],
+            "trades":    r["trades"],
+            "open":      r["open"],
+            "closed":    closed,
+            "wins":      r["wins"],
+            "losses":    r["losses"],
+            "timeouts":  r["timeouts"],
+            "win_rate":  round(r["wins"] / closed * 100, 1) if closed else 0.0,
+            "avg_win":   round(avg_win,  2),
+            "avg_loss":  round(avg_loss, 2),
+            "pnl":       round(r["pnl"], 2),
+            "best":      round(r["best"]  or 0, 2),
+            "worst":     round(r["worst"] or 0, 2),
+            "profit_factor": (None if pf == float("inf") else round(pf, 2)),
+            "last_ts":   int(r["last_ts"] or 0),
+        })
+    out.sort(key=lambda r: -r["pnl"])
+    return jsonify(out)
+
+
 @app.route("/api/portfolio")
 def api_portfolio():
     """Allocation + pairwise correlation of open positions."""

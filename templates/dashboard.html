@@ -569,6 +569,7 @@
         <div class="tab active" data-sub="positions">Open Positions</div>
         <div class="tab" data-sub="signals">Signals</div>
         <div class="tab" data-sub="trades">Trade History</div>
+        <div class="tab" data-sub="symbol-pnl">Symbol P&L</div>
         <div class="tab" data-sub="mcx">🇮🇳 MCX (ORB)</div>
         <div class="tab" data-sub="logs">Log</div>
       </div>
@@ -593,6 +594,23 @@
           <thead><tr><th>Symbol</th><th>Side</th><th>Status</th><th>Entry</th>
             <th>SL</th><th>TP</th><th>Exit</th><th>Qty</th><th>Lots</th>
             <th>Notional</th><th>Margin</th><th>P&L $</th><th>P&L %</th><th>Bars</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="sub-tab-content" id="sub-symbol-pnl">
+        <div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;gap:14px;font-size:11px;color:var(--muted);">
+          <span>Totals:</span>
+          <span id="sp-total-trades">— trades</span>
+          <span id="sp-total-pnl">— P&L</span>
+          <span id="sp-winners">— winning symbols</span>
+          <span id="sp-losers">— losing symbols</span>
+        </div>
+        <table id="symbol-pnl-table">
+          <thead><tr>
+            <th>Symbol</th><th>Trades</th><th>W</th><th>L</th><th>T</th>
+            <th>Win %</th><th>Avg Win</th><th>Avg Loss</th><th>PF</th>
+            <th>Best</th><th>Worst</th><th>P&L</th><th>Last Trade</th>
+          </tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -1076,6 +1094,56 @@ function drawSparkline(canvasId, series, up) {
   ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
 }
 
+async function refreshSymbolPnL() {
+  const r = await fetch('/api/symbol_pnl'); const rows = await r.json();
+  const fmtDT = ts => {
+    if (!ts) return '—';
+    const d = new Date(+ts * 1000);
+    return d.toLocaleString('en-IN',
+      {year:'2-digit',month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
+  };
+  if (!rows.length) {
+    $('symbol-pnl-table').querySelector('tbody').innerHTML =
+      '<tr><td colspan="13" style="color:var(--muted);text-align:center;padding:18px;">No trades yet</td></tr>';
+    $('sp-total-trades').textContent = '0 trades';
+    $('sp-total-pnl').textContent    = '$0';
+    $('sp-winners').textContent      = '0 winning symbols';
+    $('sp-losers').textContent       = '0 losing symbols';
+    return;
+  }
+  const totalTrades = rows.reduce((a,r) => a + r.trades, 0);
+  const totalPnl    = rows.reduce((a,r) => a + r.pnl, 0);
+  const winners     = rows.filter(r => r.pnl > 0).length;
+  const losers      = rows.filter(r => r.pnl < 0).length;
+  $('sp-total-trades').textContent = totalTrades + ' trades';
+  $('sp-total-pnl').textContent    = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2);
+  $('sp-total-pnl').style.color    = totalPnl > 0 ? 'var(--green)' : totalPnl < 0 ? 'var(--red)' : 'var(--text)';
+  $('sp-winners').textContent      = winners + ' winning';
+  $('sp-losers').textContent       = losers  + ' losing';
+
+  $('symbol-pnl-table').querySelector('tbody').innerHTML = rows.map(r => {
+    const pnlCls = cls(r.pnl);
+    const pfText = r.profit_factor === null ? '∞' : r.profit_factor.toFixed(2);
+    const pfCls  = r.profit_factor === null ? 'pos' :
+                   r.profit_factor >= 1.0 ? 'pos' : 'neg';
+    return `<tr>
+      <td><b>${r.symbol}</b></td>
+      <td>${r.trades}${r.open ? ' <span style="color:var(--yellow);font-size:10px;">('+r.open+'o)</span>' : ''}</td>
+      <td class="pos">${r.wins}</td>
+      <td class="neg">${r.losses}</td>
+      <td style="color:var(--muted);">${r.timeouts}</td>
+      <td>${r.win_rate.toFixed(1)}%</td>
+      <td class="pos">${r.avg_win  > 0 ? '+$'+r.avg_win.toFixed(2)  : '—'}</td>
+      <td class="neg">${r.avg_loss < 0 ?  '$'+r.avg_loss.toFixed(2) : '—'}</td>
+      <td class="${pfCls}">${pfText}</td>
+      <td class="pos">${r.best  > 0 ? '+$'+r.best.toFixed(2)  : '—'}</td>
+      <td class="neg">${r.worst < 0 ?  '$'+r.worst.toFixed(2) : '—'}</td>
+      <td class="${pnlCls}" style="font-weight:600;">${(r.pnl >= 0 ? '+' : '') + '$' + r.pnl.toFixed(2)}</td>
+      <td style="color:var(--muted);font-size:10px;">${fmtDT(r.last_ts)}</td>
+    </tr>`;
+  }).join('');
+}
+
 async function refreshLiveIndicators() {
   const r = await fetch('/api/btc_indicators'); const d = await r.json();
   if (!d.available) {
@@ -1132,6 +1200,7 @@ async function refreshAll() {
     safe(refreshStrategies,   'strategies'),
     safe(refreshDashScreener, 'screener'),
     safe(refreshLiveIndicators,'live-ind'),
+    safe(refreshSymbolPnL,    'sym-pnl'),
     safe(refreshMCX,          'mcx'),
     safe(refreshLogs,         'logs'),
   ]);

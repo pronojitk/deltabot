@@ -563,33 +563,6 @@
       </div>
     </div>
 
-    <!-- Performance chart with trade markers -->
-    <div class="chart-card">
-      <div class="head">
-        <h3>Performance</h3>
-        <span class="perf-pct" id="perf-pct">—</span>
-      </div>
-      <div class="chart-canvas-wrap">
-        <canvas id="equity-chart"></canvas>
-      </div>
-    </div>
-
-    <!-- Position visualizer (Long/Short range) -->
-    <div class="pos-card">
-      <div class="pos-side">
-        <h4 class="LONG">Long</h4>
-        <div class="pos-bar-wrap" id="long-bar-wrap">
-          <div class="pos-bar"><div class="pos-fill LONG" style="left:0;width:0;"></div></div>
-        </div>
-      </div>
-      <div class="pos-side">
-        <h4 class="SHORT">Short</h4>
-        <div class="pos-bar-wrap" id="short-bar-wrap">
-          <div class="pos-bar"><div class="pos-fill SHORT" style="left:0;width:0;"></div></div>
-        </div>
-      </div>
-    </div>
-
     <!-- Bottom data tables -->
     <div class="bottom-card">
       <div class="sub-tabs">
@@ -727,55 +700,12 @@ $('btn-reset').onclick = async () => {
   refreshAll();
 };
 
-// Equity chart
-const equityChart = new Chart($('equity-chart').getContext('2d'), {
-  type: 'line',
-  data: { labels: [], datasets: [
-    { label: 'Equity', data: [], borderColor:'#38bdf8',
-      backgroundColor:'rgba(56,189,248,0.08)',
-      fill:true, tension:0.3, pointRadius:0, borderWidth:2 },
-  ]},
-  options: {
-    responsive:true, maintainAspectRatio:false, animation:false,
-    plugins:{ legend:{display:false}, tooltip:{
-      backgroundColor:'#0f1322', borderColor:'#a78bfa', borderWidth:1,
-      titleColor:'#a78bfa', bodyColor:'#e8ecff'
-    }},
-    scales:{
-      x:{ ticks:{color:'#7a83a8',maxTicksLimit:6,font:{size:10}}, grid:{color:'rgba(255,255,255,0.04)'} },
-      y:{ ticks:{color:'#7a83a8',font:{size:10}}, grid:{color:'rgba(255,255,255,0.04)'} },
-    }
-  }
-});
-
-// Time-range filter
+// Equity chart removed from layout — keep stubs so legacy callers don't error.
+const equityChart = null;
 let timeRange = '1W';
-const trToSeconds = { '1D':86400, '1W':604800, '1M':2592000, '1Y':31536000 };
-document.querySelectorAll('.tt-btn').forEach(b => b.onclick = () => {
-  document.querySelectorAll('.tt-btn').forEach(x => x.classList.remove('active'));
-  b.classList.add('active'); timeRange = b.dataset.tr;
-  applyEquity();
-});
 
 let _equityData = [];
-function applyEquity(){
-  let data = _equityData;
-  if (data.length) {
-    const cutoff = (Date.now() / 1000) - trToSeconds[timeRange];
-    data = data.filter(d => d.time >= cutoff);
-  }
-  equityChart.data.labels = data.map(d => new Date(d.time*1000).toLocaleString('en-US',
-    {month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}));
-  equityChart.data.datasets[0].data = data.map(d => d.equity);
-  equityChart.update('none');
-  if (data.length >= 2) {
-    const start = data[0].equity, end = data[data.length-1].equity;
-    const pct = (end - start) / start * 100;
-    const pp = $('perf-pct');
-    if (pp) { pp.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
-              pp.style.color = pct >= 0 ? 'var(--green)' : 'var(--red)'; }
-  } else { const pp = $('perf-pct'); if (pp) pp.textContent = ''; }
-}
+function applyEquity(){ /* chart removed — no-op */ }
 
 // Donut: portfolio composition (Available / Margin / P&L gain or loss)
 const donutCanvas = $('donut');   // may be null after layout refactor — drawDonut handles it
@@ -844,61 +774,8 @@ function renderBots(open_trades){
   });
 }
 
-// Position visualizer (Long/Short bars)
-function renderPosBars(open_trades){
-  // Find selected trade or first trade by side
-  const selected = open_trades.find(t => t.symbol === _selectedSym);
-  const longT  = selected && selected.side === 'LONG'  ? selected : open_trades.find(t => t.side === 'LONG');
-  const shortT = selected && selected.side === 'SHORT' ? selected : open_trades.find(t => t.side === 'SHORT');
-  buildBar('long-bar-wrap',  longT,  'LONG');
-  buildBar('short-bar-wrap', shortT, 'SHORT');
-}
-
-function buildBar(wrapId, t, side) {
-  const wrap = $(wrapId);
-  if (!t) {
-    wrap.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:11px;padding:20px 0;">No ${side.toLowerCase()} position</div>`;
-    return;
-  }
-  const entry = +t.entry_price, sl = +t.sl, tp = +t.tp, now = +(t.current_price || entry);
-  // Estimated liquidation (simple 1/leverage approximation):
-  const lev = +t.leverage || 25;
-  const liq = side === 'LONG' ? entry * (1 - 1/lev) : entry * (1 + 1/lev);
-  // Range = min..max of all markers
-  const all = [entry, sl, tp, now, liq].filter(x => isFinite(x) && x > 0);
-  const min = Math.min(...all) * 0.997, max = Math.max(...all) * 1.003;
-  const pct = v => Math.max(0, Math.min(100, (v - min) / (max - min) * 100));
-
-  const fillFrom = pct(side === 'LONG' ? entry : tp);
-  const fillTo   = pct(side === 'LONG' ? tp : entry);
-  const left = Math.min(fillFrom, fillTo), w = Math.abs(fillTo - fillFrom);
-  // Build markers
-  const markers = side === 'LONG' ? [
-    { v: liq,  k: 'Liquidation', cls: 'below' },
-    { v: sl,   k: 'Stop Loss',   cls: 'below' },
-    { v: entry,k: 'Open',        cls: 'above' },
-    { v: now,  k: 'Now',         cls: 'above', hot:true },
-    { v: tp,   k: 'Target',      cls: 'below' },
-  ] : [
-    { v: tp,   k: 'Target',      cls: 'below' },
-    { v: now,  k: 'Now',         cls: 'above', hot:true },
-    { v: entry,k: 'Open',        cls: 'above' },
-    { v: sl,   k: 'Stop Loss',   cls: 'below' },
-    { v: liq,  k: 'Liquidation', cls: 'below' },
-  ];
-  let html = `<div class="pos-bar"><div class="pos-fill ${side}" style="left:${left}%;width:${w}%;"></div></div>`;
-  markers.forEach(m => {
-    if (!isFinite(m.v) || m.v <= 0) return;
-    const p = pct(m.v);
-    html += `<div class="marker" style="left:${p}%;${m.hot?'background:'+(side==='LONG'?'var(--green)':'var(--red)')+';height:18px;':''}">
-      <div class="label ${m.cls}">
-        <span class="k">${m.k}</span>
-        <span class="v">${fmtNum(m.v)}</span>
-      </div>
-    </div>`;
-  });
-  wrap.innerHTML = html;
-}
+// Position visualizer removed from layout — safe no-op.
+function renderPosBars(_open_trades) { /* removed */ }
 
 // ============== State refreshers
 async function refreshState() {

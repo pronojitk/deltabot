@@ -65,7 +65,8 @@ MARKET_CLOSE   = dtime(15, 30)   # NSE close
 EOD_FLAT_TIME  = dtime(15, 25)   # auto-flat any open paper trade here
 RR_RATIO       = 2.0             # target = entry + 2 × risk  (1:2)
 SCAN_INTERVAL  = 60              # seconds between yfinance polls
-MAX_TRADES_PER_SYMBOL_PER_DAY = 2   # allow up to N trades on the same symbol per day
+# Per symbol per day: max 1 LONG (5-min close > ORB high) AND max 1 SHORT
+# (5-min close < ORB low). Total of up to 2 trades per symbol, one per side.
 
 logging.basicConfig(
     level=logging.INFO,
@@ -81,7 +82,7 @@ class MCXBot:
         self.orb         : dict[str, dict] = {}    # sym -> ORB dict
         self.positions   : dict[str, dict] = {}    # sym -> open paper trade
         self.history     : list[dict]      = []
-        self.trades_today : dict[str, int] = {}   # sym -> trade count today
+        self.trades_today : set[tuple]     = set()   # {(sym, side), ...} taken today
         self._day        : str | None      = None
         self.on_event    = on_event or (lambda e: None)
         self.send_telegram = send_telegram
@@ -311,9 +312,8 @@ class MCXBot:
 
             orb = self.orb[sym]
 
-            # Daily cap: max N trades per symbol per day
-            taken = self.trades_today.get(sym, 0)
-            if taken >= MAX_TRADES_PER_SYMBOL_PER_DAY:
+            # Skip if both sides already taken today for this symbol
+            if (sym, "LONG") in self.trades_today and (sym, "SHORT") in self.trades_today:
                 continue
             # Don't pile a new trade on top of an existing OPEN one for this symbol
             if sym in self.positions:
@@ -321,8 +321,11 @@ class MCXBot:
 
             sig = self._check_signal(df, orb, today)
             if not sig: continue
+            # Skip if THIS side already taken today
+            if (sym, sig["side"]) in self.trades_today:
+                continue
 
-            self.trades_today[sym] = taken + 1
+            self.trades_today.add((sym, sig["side"]))
             self._open_trade(sym, sig, orb)
 
     # ─────────────────────────────────────────────────────────── alert + paper-trade

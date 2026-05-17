@@ -180,6 +180,14 @@
   /* ========== RIGHT COLUMN ========== */
   .right-col { display:flex; flex-direction:column; gap:14px; min-width:0; }
 
+  /* Top row stack: 3 panels side-by-side */
+  .top-stack {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+  }
+  @media (max-width: 1000px) { .top-stack { grid-template-columns: 1fr; } }
+
   /* Top stats card with donut + tabs + metrics */
   .top-stats-card {
     background: var(--panel); border-radius:14px; padding:14px;
@@ -445,89 +453,6 @@
       </div>
     </div>
 
-    <!-- Performance Stats -->
-    <div class="panel">
-      <div class="panel-h"><span>📊 Performance</span><span class="sub" id="ps-period">1W</span></div>
-      <div class="ps-row"><div class="ps-label">Win Rate</div><div class="ps-value" id="ps-winrate">—</div></div>
-      <div class="ps-bar"><div class="ps-bar-fill" id="ps-winbar" style="width:0%;"></div></div>
-      <div class="ps-row" style="margin-top:10px;">
-        <div class="ps-label">Total Trades</div>
-        <div class="ps-value" id="ps-trades">—</div>
-        <div class="ps-sub" id="ps-wl">—</div>
-      </div>
-      <div class="ps-divider"></div>
-      <div class="ps-row"><div class="ps-label">Profit Factor</div><div class="ps-value" id="ps-pf">—</div></div>
-      <div class="ps-divider"></div>
-      <div class="ps-row"><div class="ps-label">Max Drawdown</div><div class="ps-value" id="ps-dd">—</div></div>
-    </div>
-
-    <!-- Live Market (BTC) -->
-    <div class="panel">
-      <div class="panel-h"><span>🟢 Live Market</span></div>
-      <div style="font-size:11px;color:var(--muted);letter-spacing:1px;">BTCUSD</div>
-      <div style="display:flex;align-items:baseline;gap:8px;margin:4px 0 6px;">
-        <span id="lm-price" style="font-size:22px;font-weight:700;color:var(--text);">—</span>
-        <span id="lm-change" class="lm-chip">—</span>
-      </div>
-      <div style="position:relative;height:60px;margin:6px 0;"><canvas id="lm-spark"></canvas></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;margin-top:4px;">
-        <div>
-          <div style="color:var(--text);font-weight:600;" id="lm-high">—</div>
-          <div style="color:var(--muted);font-size:10px;">24H High</div>
-        </div>
-        <div>
-          <div style="color:var(--text);font-weight:600;" id="lm-low">—</div>
-          <div style="color:var(--muted);font-size:10px;">24H Low</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Live Indicators (BTC) -->
-    <div class="panel">
-      <div class="panel-h">
-        <span>⚡ Live Indicators</span>
-        <span class="sub" id="li-symbol">BTCUSD</span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
-        <div style="background:var(--panel2);border-radius:8px;padding:8px;">
-          <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">EMA(9)</div>
-          <div style="font-size:16px;font-weight:600;color:var(--cyan);" id="li-ema9">—</div>
-        </div>
-        <div style="background:var(--panel2);border-radius:8px;padding:8px;">
-          <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">EMA(21)</div>
-          <div style="font-size:16px;font-weight:600;color:var(--cyan);" id="li-ema21">—</div>
-        </div>
-        <div style="background:var(--panel2);border-radius:8px;padding:8px;">
-          <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">RSI(14)</div>
-          <div style="font-size:16px;font-weight:600;color:var(--cyan);" id="li-rsi">—</div>
-        </div>
-        <div style="background:var(--panel2);border-radius:8px;padding:8px;">
-          <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">PRICE</div>
-          <div style="font-size:16px;font-weight:600;color:var(--cyan);" id="li-price">—</div>
-        </div>
-      </div>
-      <div id="li-trend" class="li-check">
-        <div class="li-check-row">
-          <span class="li-mark">✓</span>
-          <div>
-            <div class="li-check-title">TREND CHECK</div>
-            <div class="li-check-sub" id="li-trend-sub">EMA(9) vs EMA(21)</div>
-          </div>
-          <span class="li-badge" id="li-trend-badge">—</span>
-        </div>
-      </div>
-      <div id="li-momentum" class="li-check" style="margin-top:6px;">
-        <div class="li-check-row">
-          <span class="li-mark">✓</span>
-          <div>
-            <div class="li-check-title">MOMENTUM</div>
-            <div class="li-check-sub" id="li-mom-sub">RSI</div>
-          </div>
-          <span class="li-badge" id="li-mom-badge">—</span>
-        </div>
-      </div>
-    </div>
-
     <!-- AI Screener -->
     <div class="panel" style="flex:1;display:flex;flex-direction:column;min-height:0;">
       <div class="panel-h">AI Screener <span class="sub" id="screener-bias-mini">Market: —</span></div>
@@ -552,33 +477,87 @@
   <!-- RIGHT COLUMN -->
   <div class="col right-col">
 
-    <!-- Top stats card: donut + tabs + metrics -->
-    <div class="top-stats-card">
-      <div class="donut-section">
-        <canvas id="donut" width="120" height="120"></canvas>
-        <div class="donut-legend" id="donut-legend">
-          <div class="row"><span class="dot" style="background:var(--green);"></span><span class="lbl">Available</span><span class="val" id="dl-avail">$0</span></div>
-          <div class="row"><span class="dot" style="background:var(--orange);"></span><span class="lbl">P&L</span><span class="val" id="dl-pnl">$0</span></div>
-          <div class="row"><span class="dot" style="background:var(--pink);"></span><span class="lbl">In Margin</span><span class="val" id="dl-margin">$0</span></div>
+    <!-- Top row: Performance · Live Market · Live Indicators -->
+    <div class="top-stack">
+      <!-- Performance Stats -->
+      <div class="panel">
+        <div class="panel-h"><span>📊 Performance</span><span class="sub" id="ps-period">1W</span></div>
+        <div class="ps-row"><div class="ps-label">Win Rate</div><div class="ps-value" id="ps-winrate">—</div></div>
+        <div class="ps-bar"><div class="ps-bar-fill" id="ps-winbar" style="width:0%;"></div></div>
+        <div class="ps-row" style="margin-top:10px;">
+          <div class="ps-label">Total Trades</div>
+          <div class="ps-value" id="ps-trades">—</div>
+          <div class="ps-sub" id="ps-wl">—</div>
+        </div>
+        <div class="ps-divider"></div>
+        <div class="ps-row"><div class="ps-label">Profit Factor</div><div class="ps-value" id="ps-pf">—</div></div>
+        <div class="ps-divider"></div>
+        <div class="ps-row"><div class="ps-label">Max Drawdown</div><div class="ps-value" id="ps-dd">—</div></div>
+      </div>
+
+      <!-- Live Market (BTC) -->
+      <div class="panel">
+        <div class="panel-h"><span>🟢 Live Market</span></div>
+        <div style="font-size:11px;color:var(--muted);letter-spacing:1px;">BTCUSD</div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin:4px 0 6px;">
+          <span id="lm-price" style="font-size:22px;font-weight:700;color:var(--text);">—</span>
+          <span id="lm-change" class="lm-chip">—</span>
+        </div>
+        <div style="position:relative;height:60px;margin:6px 0;"><canvas id="lm-spark"></canvas></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;margin-top:4px;">
+          <div>
+            <div style="color:var(--text);font-weight:600;" id="lm-high">—</div>
+            <div style="color:var(--muted);font-size:10px;">24H High</div>
+          </div>
+          <div>
+            <div style="color:var(--text);font-weight:600;" id="lm-low">—</div>
+            <div style="color:var(--muted);font-size:10px;">24H Low</div>
+          </div>
         </div>
       </div>
-      <div class="stats-right">
-        <div class="time-tabs" id="time-tabs">
-          <button class="tt-btn"        data-tr="1D">Day</button>
-          <button class="tt-btn active" data-tr="1W">Week</button>
-          <button class="tt-btn"        data-tr="1M">Month</button>
-          <button class="tt-btn"        data-tr="1Y">Year</button>
+
+      <!-- Live Indicators (BTC) -->
+      <div class="panel">
+        <div class="panel-h">
+          <span>⚡ Live Indicators</span>
+          <span class="sub" id="li-symbol">BTCUSD</span>
         </div>
-        <div class="perf-metrics">
-          <div class="perf-metric">
-            <div class="k">Bot Profit</div>
-            <div class="v" id="bot-profit-pct" style="color:var(--green);">+0.0 %</div>
-            <div class="sub" id="bot-profit-usd">$0 USD</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+          <div style="background:var(--panel2);border-radius:8px;padding:8px;">
+            <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">EMA(9)</div>
+            <div style="font-size:16px;font-weight:600;color:var(--cyan);" id="li-ema9">—</div>
           </div>
-          <div class="perf-metric">
-            <div class="k">Market</div>
-            <div class="v" id="market-pct" style="color:var(--purple);">+0.0 %</div>
-            <div class="sub" id="market-usd">avg watchlist 24h</div>
+          <div style="background:var(--panel2);border-radius:8px;padding:8px;">
+            <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">EMA(21)</div>
+            <div style="font-size:16px;font-weight:600;color:var(--cyan);" id="li-ema21">—</div>
+          </div>
+          <div style="background:var(--panel2);border-radius:8px;padding:8px;">
+            <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">RSI(14)</div>
+            <div style="font-size:16px;font-weight:600;color:var(--cyan);" id="li-rsi">—</div>
+          </div>
+          <div style="background:var(--panel2);border-radius:8px;padding:8px;">
+            <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">PRICE</div>
+            <div style="font-size:16px;font-weight:600;color:var(--cyan);" id="li-price">—</div>
+          </div>
+        </div>
+        <div id="li-trend" class="li-check">
+          <div class="li-check-row">
+            <span class="li-mark">✓</span>
+            <div>
+              <div class="li-check-title">TREND CHECK</div>
+              <div class="li-check-sub" id="li-trend-sub">EMA(9) vs EMA(21)</div>
+            </div>
+            <span class="li-badge" id="li-trend-badge">—</span>
+          </div>
+        </div>
+        <div id="li-momentum" class="li-check" style="margin-top:6px;">
+          <div class="li-check-row">
+            <span class="li-mark">✓</span>
+            <div>
+              <div class="li-check-title">MOMENTUM</div>
+              <div class="li-check-sub" id="li-mom-sub">RSI</div>
+            </div>
+            <span class="li-badge" id="li-mom-badge">—</span>
           </div>
         </div>
       </div>
@@ -792,49 +771,18 @@ function applyEquity(){
   if (data.length >= 2) {
     const start = data[0].equity, end = data[data.length-1].equity;
     const pct = (end - start) / start * 100;
-    $('perf-pct').textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
-    $('perf-pct').style.color = pct >= 0 ? 'var(--green)' : 'var(--red)';
-    // Bot profit metric
-    $('bot-profit-pct').textContent = (pct >= 0 ? '+' : '') + pct.toFixed(1) + ' %';
-    $('bot-profit-pct').style.color = pct >= 0 ? 'var(--green)' : 'var(--red)';
-    $('bot-profit-usd').textContent = fmt$(end - start) + ' USD';
-  } else { $('perf-pct').textContent = ''; }
+    const pp = $('perf-pct');
+    if (pp) { pp.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
+              pp.style.color = pct >= 0 ? 'var(--green)' : 'var(--red)'; }
+  } else { const pp = $('perf-pct'); if (pp) pp.textContent = ''; }
 }
 
 // Donut: portfolio composition (Available / Margin / P&L gain or loss)
-const donutCanvas = $('donut');
+const donutCanvas = $('donut');   // may be null after layout refactor — drawDonut handles it
 function drawDonut(stats){
-  const ctx = donutCanvas.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
-  donutCanvas.width = 120 * dpr; donutCanvas.height = 120 * dpr;
-  donutCanvas.style.width = '120px'; donutCanvas.style.height = '120px';
-  ctx.scale(dpr, dpr);
-  const W = 120, H = 120, cx = W/2, cy = H/2, r = 50, ir = 38;
-  ctx.clearRect(0,0,W,H);
-
-  const avail = Math.max(0, stats.free_margin || 0);
-  const margin = Math.max(0, stats.margin_used || 0);
-  const pnl = Math.max(0, stats.total_pnl || 0);
-  const total = avail + margin + pnl || 1;
-  const segs = [
-    { v: avail,  c: '#2dd4bf' },
-    { v: pnl,    c: '#ff8c00' },
-    { v: margin, c: '#ff5b9e' },
-  ];
-  let a = -Math.PI/2;
-  segs.forEach(s => {
-    if (s.v <= 0) return;
-    const slice = (s.v/total) * Math.PI*2;
-    ctx.strokeStyle = s.c;
-    ctx.lineWidth = r - ir;
-    ctx.beginPath();
-    ctx.arc(cx, cy, (r+ir)/2, a, a + slice);
-    ctx.stroke();
-    a += slice;
-  });
-  $('dl-avail').textContent  = fmt$(avail);
-  $('dl-pnl').textContent    = fmt$(pnl);
-  $('dl-margin').textContent = fmt$(margin);
+  // Donut card was removed from the layout — keep this as a safe no-op so
+  // legacy callers don't error. (Total card on the left already shows the same info.)
+  return;
 }
 
 // Bot card icon color
@@ -1142,8 +1090,9 @@ async function refreshDashScreener() {
     : d.market_bias === 'Bearish' ? 'var(--red)' : 'var(--muted)';
   $('scr-gauge').style.left = d.gauge_pct + '%';
   const avg24 = (d.rows || []).reduce((a,r) => a + (r.change_24h || 0), 0) / Math.max(1, (d.rows || []).length);
-  $('market-pct').textContent = (avg24 >= 0 ? '+' : '') + avg24.toFixed(1) + ' %';
-  $('market-pct').style.color = avg24 >= 0 ? 'var(--green)' : 'var(--red)';
+  const mp = $('market-pct');
+  if (mp) { mp.textContent = (avg24 >= 0 ? '+' : '') + avg24.toFixed(1) + ' %';
+            mp.style.color = avg24 >= 0 ? 'var(--green)' : 'var(--red)'; }
   renderScrTop(d);
 }
 

@@ -613,7 +613,7 @@
         <table id="symbol-pnl-table">
           <thead><tr>
             <th>Symbol</th><th>Trades</th><th>W</th><th>L</th><th>T</th>
-            <th>Win %</th><th>Avg Win</th><th>Avg Loss</th><th>PF</th>
+            <th>Win %</th><th>Best Side</th><th>Avg Win</th><th>Avg Loss</th><th>PF</th>
             <th>Best</th><th>Worst</th><th>P&L</th><th>Last Trade</th>
           </tr></thead>
           <tbody></tbody>
@@ -1111,7 +1111,7 @@ async function refreshSymbolPnL() {
   };
   if (!rows.length) {
     $('symbol-pnl-table').querySelector('tbody').innerHTML =
-      '<tr><td colspan="13" style="color:var(--muted);text-align:center;padding:18px;">No trades yet</td></tr>';
+      '<tr><td colspan="14" style="color:var(--muted);text-align:center;padding:18px;">No trades yet</td></tr>';
     $('sp-total-trades').textContent = '0 trades';
     $('sp-total-pnl').textContent    = '$0';
     $('sp-winners').textContent      = '0 winning';
@@ -1135,9 +1135,22 @@ async function refreshSymbolPnL() {
                    r.profit_factor >= 1.0 ? 'pos' : 'neg';
     const isOpen = _spExpanded === r.symbol;
     const detailHtml = isOpen ? `
-      <tr class="sp-detail"><td colspan="13" style="padding:0;background:var(--panel2);">
+      <tr class="sp-detail"><td colspan="14" style="padding:0;background:var(--panel2);">
         ${renderSymDetail(r)}
       </td></tr>` : '';
+
+    // Best side badge
+    let bestBadge = '<span style="color:var(--muted);">—</span>';
+    if (r.best_side === 'LONG') {
+      const amt = (r.long_pnl >= 0 ? '+' : '') + '$' + r.long_pnl.toFixed(2);
+      bestBadge = `<span class="pill LONG" title="LONG ${r.long_trades}T · ${r.long_win_rate}% WR">▲ LONG ${amt}</span>`;
+    } else if (r.best_side === 'SHORT') {
+      const amt = (r.short_pnl >= 0 ? '+' : '') + '$' + r.short_pnl.toFixed(2);
+      bestBadge = `<span class="pill SHORT" title="SHORT ${r.short_trades}T · ${r.short_win_rate}% WR">▼ SHORT ${amt}</span>`;
+    } else if (r.best_side === 'TIE') {
+      bestBadge = '<span style="color:var(--muted);">= TIE</span>';
+    }
+
     return `<tr class="sp-row" data-sym="${r.symbol}" style="cursor:pointer;${isOpen?'background:var(--panel2);':''}">
       <td><b>${r.symbol}</b> ${isOpen?'▼':'▸'}</td>
       <td>${r.trades}${r.open ? ' <span style="color:var(--yellow);font-size:10px;">('+r.open+'o)</span>' : ''}</td>
@@ -1145,6 +1158,7 @@ async function refreshSymbolPnL() {
       <td class="neg">${r.losses}</td>
       <td style="color:var(--muted);">${r.timeouts}</td>
       <td>${r.win_rate.toFixed(1)}%</td>
+      <td>${bestBadge}</td>
       <td class="pos">${r.avg_win  > 0 ? '+$'+r.avg_win.toFixed(2)  : '—'}</td>
       <td class="neg">${r.avg_loss < 0 ?  '$'+r.avg_loss.toFixed(2) : '—'}</td>
       <td class="${pfCls}">${pfText}</td>
@@ -1179,14 +1193,19 @@ function renderSymDetail(r) {
     <div style="padding:14px 18px;display:grid;grid-template-columns:1fr 1fr 2fr;gap:18px;">
       <div>
         <div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:6px;">SIDE BREAKDOWN</div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);">
-          <span>LONG  ${r.long_trades}T</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:5px 0;border-bottom:1px solid var(--border);">
+          <span><b class="pos">▲ LONG</b> ${r.long_trades}T · W${r.long_wins||0}/L${r.long_losses||0} · ${(r.long_win_rate||0).toFixed(1)}%</span>
           <span class="${longUp}" style="font-weight:600;">${r.long_pnl>=0?'+':''}$${r.long_pnl.toFixed(2)}</span>
         </div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;">
-          <span>SHORT ${r.short_trades}T</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:5px 0;">
+          <span><b class="neg">▼ SHORT</b> ${r.short_trades}T · W${r.short_wins||0}/L${r.short_losses||0} · ${(r.short_win_rate||0).toFixed(1)}%</span>
           <span class="${shortUp}" style="font-weight:600;">${r.short_pnl>=0?'+':''}$${r.short_pnl.toFixed(2)}</span>
         </div>
+        ${r.best_side && r.best_side !== 'TIE' ? `
+        <div style="margin-top:8px;font-size:10px;color:var(--muted);">
+          Best side: <b class="${r.best_side==='LONG'?'pos':'neg'}">${r.best_side}</b>
+          (${r.best_side==='LONG' ? ((r.long_pnl - r.short_pnl).toFixed(2)) : ((r.short_pnl - r.long_pnl).toFixed(2))} $ edge)
+        </div>` : ''}
       </div>
       <div>
         <div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:6px;">METRICS</div>

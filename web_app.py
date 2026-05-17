@@ -375,11 +375,26 @@ def api_symbol_pnl():
         timeout_pnl= sum(t.get("pnl_usd", 0) for t in timeouts)
         total_pnl  = wins_pnl + losses_pnl + timeout_pnl
 
-        # Side breakdown
+        # Side breakdown — including W/L per side
         long_trades  = [t for t in closed_sorted if t.get("side") == "LONG"]
         short_trades = [t for t in closed_sorted if t.get("side") == "SHORT"]
         long_pnl  = sum(t.get("pnl_usd", 0) for t in long_trades)
         short_pnl = sum(t.get("pnl_usd", 0) for t in short_trades)
+        long_wins   = sum(1 for t in long_trades  if t.get("status") == "WIN")
+        long_losses = sum(1 for t in long_trades  if t.get("status") == "LOSS")
+        short_wins   = sum(1 for t in short_trades if t.get("status") == "WIN")
+        short_losses = sum(1 for t in short_trades if t.get("status") == "LOSS")
+        long_wr  = (long_wins  / (long_wins  + long_losses) * 100) if (long_wins  + long_losses) else 0.0
+        short_wr = (short_wins / (short_wins + short_losses) * 100) if (short_wins + short_losses) else 0.0
+        # Best side = higher P&L (with at least 1 closed trade). None if both zero.
+        if not long_trades and not short_trades:
+            best_side = None
+        elif not short_trades or long_pnl > short_pnl:
+            best_side = "LONG"
+        elif not long_trades or short_pnl > long_pnl:
+            best_side = "SHORT"
+        else:
+            best_side = "TIE"
 
         # Streaks (consecutive wins/losses, ignoring timeouts)
         streak_w = streak_l = best_w = best_l = 0
@@ -435,10 +450,17 @@ def api_symbol_pnl():
             "best_loss_streak": best_l,
             "avg_bars":   round(avg_bars, 1),
             # Sides
-            "long_trades":  len(long_trades),
-            "short_trades": len(short_trades),
-            "long_pnl":     round(long_pnl, 2),
-            "short_pnl":    round(short_pnl, 2),
+            "long_trades":   len(long_trades),
+            "short_trades":  len(short_trades),
+            "long_pnl":      round(long_pnl, 2),
+            "short_pnl":     round(short_pnl, 2),
+            "long_wins":     long_wins,
+            "long_losses":   long_losses,
+            "short_wins":    short_wins,
+            "short_losses":  short_losses,
+            "long_win_rate": round(long_wr, 1),
+            "short_win_rate":round(short_wr, 1),
+            "best_side":     best_side,
             # Equity sparkline + time
             "equity_pts":   equity_pts,
             "first_ts":     int(trades_sorted[0].get("entry_time") or 0) if trades_sorted else 0,

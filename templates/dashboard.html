@@ -347,8 +347,26 @@
   .scr-mover {
     display:flex; justify-content:space-between; align-items:center;
     padding:6px 0; border-bottom:1px solid var(--border); font-size:11px;
+    gap:8px;
   }
   .scr-mover:last-child { border-bottom:none; }
+  .scr-rank-badge {
+    display:inline-block; min-width:22px; text-align:center;
+    font-size:10px; font-weight:700; padding:2px 5px; border-radius:4px;
+    background: var(--panel2); color: var(--muted);
+  }
+  .scr-rank-badge.top { background: var(--orange); color:#000; }
+  .scr-score-bar {
+    flex:1; height:4px; background: var(--bg2); border-radius:2px; overflow:hidden;
+    max-width:60px;
+  }
+  .scr-score-bar div { height:100%; background:linear-gradient(90deg,var(--red),var(--yellow),var(--green2)); }
+  .scr-sort-btn {
+    background:transparent; border:1px solid var(--border2); color:var(--muted);
+    padding:2px 8px; font:inherit; font-size:9px; letter-spacing:1px;
+    cursor:pointer; border-radius:3px; margin-left:3px;
+  }
+  .scr-sort-btn.active { background:var(--purple); color:#000; border-color:var(--purple); }
 
   /* Bottom panel sub-tabs */
   .bottom-card {
@@ -468,7 +486,13 @@
         <div class="scr-cell" data-filter="Bearish"><div class="k">Bearish</div><div class="v bear" id="scr-bear">0</div></div>
       </div>
       <div class="scr-bar"><div class="gauge" id="scr-gauge" style="left:50%;"></div></div>
-      <div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:4px;">TOP MOVERS</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <span style="font-size:9px;color:var(--muted);letter-spacing:1px;" id="scr-list-label">TOP RANKED</span>
+        <div style="display:flex;gap:0;">
+          <button class="scr-sort-btn active" data-sort="rank">Rank</button>
+          <button class="scr-sort-btn" data-sort="mover">Mover</button>
+        </div>
+      </div>
       <div id="scr-top" style="flex:1;overflow-y:auto;"></div>
     </div>
 
@@ -964,16 +988,38 @@ document.querySelectorAll('.scr-cell').forEach(c => c.onclick = () => {
   if (window._screenerCache) renderScrTop(window._screenerCache);
 });
 
+let _scrSort = 'rank';   // 'rank' (composite) or 'mover' (|24h|)
+document.addEventListener('click', e => {
+  if (!e.target.classList.contains('scr-sort-btn')) return;
+  document.querySelectorAll('.scr-sort-btn').forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+  _scrSort = e.target.dataset.sort;
+  const lbl = $('scr-list-label');
+  if (lbl) lbl.textContent = _scrSort === 'rank' ? 'TOP RANKED' : 'TOP MOVERS';
+  if (window._screenerCache) renderScrTop(window._screenerCache);
+});
+
 function renderScrTop(d) {
   let rows = (d.rows || []).slice();
   if (_screenerFilter !== 'ALL') rows = rows.filter(r => r.bias === _screenerFilter);
-  rows.sort((a,b) => Math.abs(b.change_24h) - Math.abs(a.change_24h));
-  rows = rows.slice(0, 6);
+  if (_scrSort === 'mover') {
+    rows.sort((a,b) => Math.abs(b.change_24h) - Math.abs(a.change_24h));
+  } else {
+    rows.sort((a,b) => (b.composite_score || 0) - (a.composite_score || 0));
+  }
+  rows = rows.slice(0, 8);
   $('scr-top').innerHTML = rows.map(r => {
     const c = r.change_24h > 0 ? 'pos' : r.change_24h < 0 ? 'neg' : 'neutral';
-    return `<div class="scr-mover">
-      <span><b>${r.symbol}</b> <span class="pill ${r.bias}" style="font-size:8px;">${r.bias}</span></span>
-      <span class="${c}">${r.change_24h > 0 ? '+' : ''}${r.change_24h.toFixed(2)}%</span>
+    const score = r.composite_score || 0;
+    const rank = r.rank || '—';
+    const rankCls = (rank <= 3) ? 'top' : '';
+    const tip = `Trend ${r.trend_score}  ·  Momentum ${r.momentum_score}  ·  Regime ${r.regime_score}  ·  Vol ${r.volatility_score}`;
+    return `<div class="scr-mover" title="${tip}">
+      <span class="scr-rank-badge ${rankCls}">#${rank}</span>
+      <span style="min-width:80px;"><b>${r.symbol}</b></span>
+      <span class="scr-score-bar"><div style="width:${score}%;"></div></span>
+      <span style="min-width:36px;text-align:right;color:var(--text);font-weight:600;">${score.toFixed(0)}</span>
+      <span class="${c}" style="min-width:54px;text-align:right;">${r.change_24h > 0 ? '+' : ''}${r.change_24h.toFixed(2)}%</span>
     </div>`;
   }).join('') || '<div style="color:var(--muted);font-size:11px;padding:6px 0;">No coins match</div>';
 }

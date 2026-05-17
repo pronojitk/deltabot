@@ -239,7 +239,15 @@ def api_watchlist():
 
 @app.route("/api/screener")
 def api_screener():
-    """Per-symbol bias + overall market bias for the AI Screener panel."""
+    """Per-symbol bias + multi-factor scoring + ranking for the AI Screener panel.
+
+    Factor scores (each 0–100, higher = more bullish/tradeable):
+      • trend     — EMA-stack alignment + slope (EMA7 vs EMA21, distance to trend EMA)
+      • momentum  — 24h % change, normalized to ±10% range
+      • volatility— ATR% sweet spot (0.5–4% = tradeable, too low/high penalized)
+      • regime    — Trending=100, Mixed=50, Choppy=0
+      • composite — weighted average (trend 35%, momentum 30%, regime 20%, vol 15%)
+    """
     import time as _time
     with state.lock:
         rows = list(state.watchlist.values())
@@ -247,14 +255,54 @@ def api_screener():
     now = int(_time.time())
     enriched = []
     bullish = bearish = neutral = 0
-    score_total = 0.0
+    bias_score_total = 0.0
+
+    # ── Factor helpers (each returns 0..100) ──
+    def _trend_score(d):
+        e7  = d.get("ema7"); e21 = d.get("ema21"); te = d.get("trend_ema")
+        price = d.get("price") or 0
+        if not (e7 and e21 and te and price): return 50.0
+        s = 50.0
+        s += 15 if e7 > e21 else -15
+        s += 15 if price > te else -15
+        # EMA spread normalised
+        sp = d.get("ema_spread_pct", 0.0) or 0.0
+        s += max(-10, min(10, sp * 5))
+        return max(0.0, min(100.0, s))
+
+    def _momentum_score(d):
+        ch = d.get("change_24h", 0.0) or 0.0
+        # Map -10%..+10% to 0..100
+        return max(0.0, min(100.0, 50.0 + ch * 5.0))
+
+    def _volatility_score(d):
+        ap = d.get("atr_pct", 0.0) or 0.0
+        # Sweet spot 1–3% ATR; <0.3% boring, >5% chaotic
+        if ap < 0.3:  return ap / 0.3 * 40
+        if ap < 1.0:  return 40 + (ap - 0.3) / 0.7 * 30
+        if ap < 3.0:  return 70 + (ap - 1.0) / 2.0 * 30   # 70..100
+        if ap < 5.0:  return 100 - (ap - 3.0) / 2.0 * 30  # 100..70
+        return max(0.0, 70 - (ap - 5.0) * 10)             # decay
+
+    def _regime_score(d):
+        reg = (d.get("regime") or "").lower()
+        return {"trending": 100, "mixed": 50, "choppy": 10}.get(reg, 50)
+
+    W = {"trend": 0.35, "momentum": 0.30, "regime": 0.20, "vol": 0.15}
 
     for d in rows:
         bias = d.get("bias", "Neutral")
         if   bias == "Bullish": bullish += 1
         elif bias == "Bearish": bearish += 1
-        else:                    neutral += 1
-        score_total += d.get("bias_score", 0.0)
+        else:                   neutral += 1
+        bias_score_total += d.get("bias_score", 0.0)
+
+        ts = _trend_score(d)
+        ms = _momentum_score(d)
+        vs = _volatility_score(d)
+        rs = _regime_score(d)
+        composite = W["trend"]*ts + W["momentum"]*ms + W["regime"]*rs + W["vol"]*vs
+
         enriched.append({
             "symbol":      d["symbol"],
             "underlying":  d.get("underlying", d["symbol"]),
@@ -264,15 +312,23 @@ def api_screener():
             "bias":        bias,
             "bias_score":  d.get("bias_score", 0.0),
             "age_seconds": max(0, now - int(d.get("time", now))),
+            # Factor scores (each 0..100, higher = better for LONG)
+            "trend_score":      round(ts, 1),
+            "momentum_score":   round(ms, 1),
+            "volatility_score": round(vs, 1),
+            "regime_score":     round(rs, 1),
+            "composite_score":  round(composite, 1),
         })
 
-    n = len(enriched) or 1
-    avg = score_total / n
-    market_bias = "Bullish" if avg >= 0.2 else "Bearish" if avg <= -0.2 else "Neutral"
-    # Map -1..+1 → 0..100 for the gauge (0 = far left bearish, 100 = far right bullish)
-    gauge_pct = round((avg + 1) * 50, 1)
+    # Rank (1 = best) by composite score (descending)
+    enriched.sort(key=lambda r: -r["composite_score"])
+    for i, r in enumerate(enriched, 1):
+        r["rank"] = i
 
-    enriched.sort(key=lambda r: -r["bias_score"])   # bullish first
+    n = len(enriched) or 1
+    avg = bias_score_total / n
+    market_bias = "Bullish" if avg >= 0.2 else "Bearish" if avg <= -0.2 else "Neutral"
+    gauge_pct = round((avg + 1) * 50, 1)
 
     return jsonify({
         "market_bias":  market_bias,
@@ -280,6 +336,7 @@ def api_screener():
         "avg_score":    round(avg, 3),
         "counts":       {"bullish": bullish, "bearish": bearish, "neutral": neutral},
         "rows":         enriched,
+        "weights":      W,
     })
 
 

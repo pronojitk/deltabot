@@ -272,6 +272,22 @@
   .panel-h .sub { font-size:11px; color:var(--muted); font-weight:400; }
 
   /* Screener mini */
+  /* Performance Stats panel */
+  .ps-row { display:flex; align-items:center; padding:8px 2px; gap:8px; font-size:12px; }
+  .ps-label { color: var(--muted); flex:1; letter-spacing:0.3px; }
+  .ps-value { color: var(--text); font-weight:600; font-size:14px; }
+  .ps-sub   { color: var(--muted); font-size:10px; }
+  .ps-divider { height:1px; background: var(--border); margin:2px 0; }
+  .ps-bar { height:3px; background:var(--bg2); border-radius:2px; overflow:hidden; margin-bottom:4px; }
+  .ps-bar-fill { height:100%; background:linear-gradient(90deg, var(--green), var(--green2)); transition: width .3s; }
+
+  /* Live Market chip */
+  .lm-chip {
+    padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;
+    background: rgba(248,113,113,0.15); color: var(--red);
+  }
+  .lm-chip.up { background: rgba(45,212,191,0.15); color: var(--green); }
+
   /* Live Indicators check rows */
   .li-check {
     background: var(--panel2); border-radius:8px; padding:8px 10px;
@@ -426,6 +442,43 @@
         <div class="bal-cell"><div class="lbl">Available</div><div class="val" id="t-avail">$0</div></div>
         <div class="bal-cell"><div class="lbl">In Bots</div><div class="val" id="t-inbots">$0</div></div>
         <div class="bal-cell"><div class="lbl">🔒 In Positions</div><div class="val" id="t-inpos">$0</div></div>
+      </div>
+    </div>
+
+    <!-- Performance Stats -->
+    <div class="panel">
+      <div class="panel-h"><span>📊 Performance</span><span class="sub" id="ps-period">1W</span></div>
+      <div class="ps-row"><div class="ps-label">Win Rate</div><div class="ps-value" id="ps-winrate">—</div></div>
+      <div class="ps-bar"><div class="ps-bar-fill" id="ps-winbar" style="width:0%;"></div></div>
+      <div class="ps-row" style="margin-top:10px;">
+        <div class="ps-label">Total Trades</div>
+        <div class="ps-value" id="ps-trades">—</div>
+        <div class="ps-sub" id="ps-wl">—</div>
+      </div>
+      <div class="ps-divider"></div>
+      <div class="ps-row"><div class="ps-label">Profit Factor</div><div class="ps-value" id="ps-pf">—</div></div>
+      <div class="ps-divider"></div>
+      <div class="ps-row"><div class="ps-label">Max Drawdown</div><div class="ps-value" id="ps-dd">—</div></div>
+    </div>
+
+    <!-- Live Market (BTC) -->
+    <div class="panel">
+      <div class="panel-h"><span>🟢 Live Market</span></div>
+      <div style="font-size:11px;color:var(--muted);letter-spacing:1px;">BTCUSD</div>
+      <div style="display:flex;align-items:baseline;gap:8px;margin:4px 0 6px;">
+        <span id="lm-price" style="font-size:22px;font-weight:700;color:var(--text);">—</span>
+        <span id="lm-change" class="lm-chip">—</span>
+      </div>
+      <div style="position:relative;height:60px;margin:6px 0;"><canvas id="lm-spark"></canvas></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;margin-top:4px;">
+        <div>
+          <div style="color:var(--text);font-weight:600;" id="lm-high">—</div>
+          <div style="color:var(--muted);font-size:10px;">24H High</div>
+        </div>
+        <div>
+          <div style="color:var(--text);font-weight:600;" id="lm-low">—</div>
+          <div style="color:var(--muted);font-size:10px;">24H Low</div>
+        </div>
       </div>
     </div>
 
@@ -929,6 +982,24 @@ async function refreshState() {
   $('t-inbots').textContent = fmt$(stats.margin_used);
   $('t-inpos').textContent  = fmt$(stats.unrealized_pnl);
 
+  // Performance Stats card
+  const wr = stats.win_rate || 0;
+  $('ps-winrate').textContent = wr.toFixed(1) + '%';
+  $('ps-winrate').style.color = wr >= 50 ? 'var(--green)' : wr >= 30 ? 'var(--yellow)' : 'var(--red)';
+  $('ps-winbar').style.width  = Math.min(100, wr) + '%';
+  $('ps-winbar').style.background = wr >= 50 ? 'linear-gradient(90deg,var(--green),var(--green2))'
+                                   : wr >= 30 ? 'linear-gradient(90deg,var(--yellow),var(--orange))'
+                                   : 'linear-gradient(90deg,var(--red),var(--pink))';
+  $('ps-trades').textContent = stats.total_trades || 0;
+  $('ps-wl').textContent     = (stats.wins||0) + 'W · ' + (stats.losses||0) + 'L';
+  const pf = stats.profit_factor;
+  $('ps-pf').textContent     = (pf === 0 || pf === null || pf === undefined) ? '—'
+                              : (pf > 99 ? '∞' : (+pf).toFixed(2));
+  $('ps-pf').style.color     = (pf >= 1.0) ? 'var(--green)' : 'var(--red)';
+  const dd = stats.max_drawdown || 0;
+  $('ps-dd').textContent     = dd.toFixed(2) + '%';
+  $('ps-dd').style.color     = dd > 10 ? 'var(--red)' : dd > 5 ? 'var(--yellow)' : 'var(--green)';
+
   // Donut
   drawDonut(stats);
   // Bots list
@@ -1148,13 +1219,53 @@ async function refreshMCX() {
   }).join('') || '<tr><td colspan="9" style="color:var(--muted);text-align:center;padding:14px;">No MCX trades yet</td></tr>';
 }
 
+function drawSparkline(canvasId, series, up) {
+  const c = $(canvasId);
+  if (!c || !series || series.length < 2) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = c.clientWidth || 200, H = c.clientHeight || 60;
+  c.width = W * dpr; c.height = H * dpr;
+  const ctx = c.getContext('2d'); ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+  const min = Math.min(...series), max = Math.max(...series), range = (max - min) || 1;
+  const stepX = W / (series.length - 1);
+  const color = up ? '#2dd4bf' : '#f87171';
+  // Fill area
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  series.forEach((v, i) => {
+    const x = i * stepX, y = H - ((v - min) / range) * (H - 4) - 2;
+    ctx.lineTo(x, y);
+  });
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  ctx.fillStyle = up ? 'rgba(45,212,191,0.10)' : 'rgba(248,113,113,0.10)';
+  ctx.fill();
+  // Line
+  ctx.beginPath();
+  series.forEach((v, i) => {
+    const x = i * stepX, y = H - ((v - min) / range) * (H - 4) - 2;
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  });
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
+}
+
 async function refreshLiveIndicators() {
   const r = await fetch('/api/btc_indicators'); const d = await r.json();
   if (!d.available) {
     $('li-ema9').textContent = '—'; $('li-ema21').textContent = '—';
     $('li-rsi').textContent = '—';  $('li-price').textContent = '—';
+    $('lm-price').textContent = '—'; $('lm-change').textContent = '—';
     return;
   }
+  // ── Live Market card ──
+  const up = (d.change_24h_pct || 0) >= 0;
+  $('lm-price').textContent = '$' + d.price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  $('lm-change').textContent = (up ? '+' : '') + d.change_24h_pct.toFixed(2) + '%';
+  $('lm-change').className = 'lm-chip' + (up ? ' up' : '');
+  $('lm-high').textContent  = '$' + d.high_24h.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  $('lm-low').textContent   = '$' + d.low_24h.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  drawSparkline('lm-spark', d.series, up);
   $('li-symbol').textContent = d.symbol;
   $('li-ema9').textContent   = d.ema9.toLocaleString();
   $('li-ema21').textContent  = d.ema21.toLocaleString();

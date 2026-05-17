@@ -72,6 +72,13 @@ def _auth_get(endpoint: str, params: dict = None, retries: int = 3) -> dict | No
     return None
 
 
+def get_ticker(symbol: str) -> dict | None:
+    """Public ticker — funding rate, open interest, 24h volume, mark price."""
+    data = _get(f"/v2/tickers/{symbol}")
+    if not data: return None
+    return data.get("result")
+
+
 def get_wallet_balances() -> list[dict] | None:
     """Authenticated. Returns list of wallet balances. None if no creds."""
     data = _auth_get("/v2/wallet/balances")

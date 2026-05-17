@@ -73,6 +73,80 @@ def rsi(closes: list[float], period: int = 14) -> float:
     return 100.0 - (100.0 / (1.0 + rs))
 
 
+def macd(closes: list[float], fast: int = 12, slow: int = 26, sig: int = 9) -> tuple[float, float, float]:
+    """Return (macd_line, signal_line, histogram). 0,0,0 if insufficient data."""
+    if len(closes) < slow + sig:
+        return 0.0, 0.0, 0.0
+    e_fast = ema(closes, fast)
+    e_slow = ema(closes, slow)
+    line = [a - b for a, b in zip(e_fast, e_slow)]
+    sig_line = ema(line[slow-1:], sig)
+    if not sig_line: return 0.0, 0.0, 0.0
+    return round(line[-1], 4), round(sig_line[-1], 4), round(line[-1] - sig_line[-1], 4)
+
+
+def bollinger(closes: list[float], period: int = 20, mult: float = 2.0) -> tuple[float, float, float, float]:
+    """Return (upper, middle, lower, pct_b). pct_b = (price - lower) / (upper - lower) * 100."""
+    if len(closes) < period:
+        return 0.0, 0.0, 0.0, 50.0
+    window = closes[-period:]
+    mid = sum(window) / period
+    var = sum((x - mid) ** 2 for x in window) / period
+    sd = var ** 0.5
+    upper = mid + mult * sd
+    lower = mid - mult * sd
+    rng = upper - lower
+    pct_b = ((closes[-1] - lower) / rng * 100) if rng else 50.0
+    return round(upper, 2), round(mid, 2), round(lower, 2), round(pct_b, 1)
+
+
+def stochastic(candles: list[dict], k_period: int = 14) -> float:
+    """Return %K of last candle. 0..100."""
+    if len(candles) < k_period:
+        return 50.0
+    window = candles[-k_period:]
+    hh = max(c["high"] for c in window)
+    ll = min(c["low"]  for c in window)
+    c = candles[-1]["close"]
+    if hh == ll: return 50.0
+    return round((c - ll) / (hh - ll) * 100.0, 1)
+
+
+def adx(candles: list[dict], period: int = 14) -> float:
+    """Average Directional Index (Wilder). Trend strength 0..100."""
+    if len(candles) < period * 2 + 1:
+        return 0.0
+    plus_dm, minus_dm, trs = [], [], []
+    for i in range(1, len(candles)):
+        h, l, pc = candles[i]["high"], candles[i]["low"], candles[i-1]["close"]
+        ph, pl   = candles[i-1]["high"], candles[i-1]["low"]
+        up   = h - ph
+        down = pl - l
+        plus_dm.append(  up   if up > down and up > 0 else 0.0)
+        minus_dm.append(down  if down > up   and down > 0 else 0.0)
+        tr = max(h - l, abs(h - pc), abs(l - pc))
+        trs.append(tr)
+    def _wilder(values: list[float]) -> list[float]:
+        if len(values) < period: return []
+        out = [sum(values[:period])]
+        for v in values[period:]:
+            out.append(out[-1] - out[-1]/period + v)
+        return out
+    atr_w   = _wilder(trs)
+    plus_w  = _wilder(plus_dm)
+    minus_w = _wilder(minus_dm)
+    if not atr_w or len(atr_w) != len(plus_w): return 0.0
+    plus_di  = [100 * p / a if a else 0 for p, a in zip(plus_w, atr_w)]
+    minus_di = [100 * m / a if a else 0 for m, a in zip(minus_w, atr_w)]
+    dx = [100 * abs(p - m) / (p + m) if (p + m) else 0 for p, m in zip(plus_di, minus_di)]
+    if len(dx) < period: return 0.0
+    # Smooth DX with Wilder period
+    adx_v = sum(dx[:period]) / period
+    for v in dx[period:]:
+        adx_v = (adx_v * (period - 1) + v) / period
+    return round(adx_v, 1)
+
+
 # ---------------------------------------------------------------------------
 # Average True Range (Wilder's smoothing)
 # ---------------------------------------------------------------------------

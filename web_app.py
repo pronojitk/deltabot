@@ -169,19 +169,24 @@ def _tick_open_prices():
 
 @app.route("/api/btc_indicators")
 def api_btc_indicators():
-    """Live EMA(9)/EMA(21)/RSI(14)/price + 24h market data + sparkline for BTC."""
-    from delta_client import get_ohlcv
-    from indicators import ema, rsi
-    candles = get_ohlcv("BTCUSD", "15m", 100) or []
-    if len(candles) < 30:
+    """Live BTC: price + EMA/RSI/MACD/BB/Stoch/ADX/ATR + 24h market + funding/OI."""
+    from delta_client import get_ohlcv, get_ticker
+    from indicators import ema, rsi, macd, bollinger, stochastic, adx, atr
+    candles = get_ohlcv("BTCUSD", "15m", 200) or []
+    if len(candles) < 50:
         return jsonify({"available": False})
     closes = [c["close"] for c in candles]
-    highs  = [c["high"]  for c in candles]
-    lows   = [c["low"]   for c in candles]
     e9    = ema(closes, 9)[-1]  if len(closes) >= 9  else 0.0
     e21   = ema(closes, 21)[-1] if len(closes) >= 21 else 0.0
+    e50   = ema(closes, 50)[-1] if len(closes) >= 50 else 0.0
     r14   = rsi(closes, 14)
+    m_line, m_sig, m_hist = macd(closes, 12, 26, 9)
+    bb_u, bb_m, bb_l, pct_b = bollinger(closes, 20, 2.0)
+    stoch_k = stochastic(candles, 14)
+    adx_v   = adx(candles, 14)
+    atr_v   = atr(candles, 14)
     price = closes[-1]
+    atr_pct = (atr_v / price * 100) if price else 0.0
     # 24h window = 96 × 15-min candles
     win = candles[-96:] if len(candles) >= 96 else candles
     high_24h = max(c["high"] for c in win)
@@ -189,20 +194,55 @@ def api_btc_indicators():
     ref      = win[0]["close"]
     change_24h_pct = ((price - ref) / ref * 100.0) if ref else 0.0
     series = [round(c["close"], 2) for c in win]
+
+    # Market structure (funding / OI / volume) — best-effort, may be None
+    fund_rate = oi = vol_24h = mark_price = None
+    try:
+        tk = get_ticker("BTCUSD") or {}
+        fund_rate  = float(tk.get("funding_rate") or 0) * 100.0 if tk.get("funding_rate") is not None else None
+        oi         = float(tk.get("open_interest") or 0) or None
+        vol_24h    = float(tk.get("volume") or tk.get("volume_24h") or 0) or None
+        mark_price = float(tk.get("mark_price") or 0) or None
+    except Exception:
+        pass
+
     return jsonify({
         "available": True,
         "symbol":    "BTCUSD",
         "price":     round(price, 2),
-        "ema9":      round(e9, 2),
-        "ema21":     round(e21, 2),
-        "rsi14":     round(r14, 3),
-        "trend_ok":  e9 > e21,
-        "momentum_ok": r14 > 50,
+        "mark_price": round(mark_price, 2) if mark_price else None,
+        # Trend / momentum primitives
+        "ema9":  round(e9, 2),
+        "ema21": round(e21, 2),
+        "ema50": round(e50, 2),
+        "rsi14": round(r14, 2),
         "rsi_label": "bullish" if r14 > 50 else "bearish" if r14 < 50 else "neutral",
+        "macd_line":   m_line,
+        "macd_signal": m_sig,
+        "macd_hist":   m_hist,
+        "bb_upper":  bb_u,
+        "bb_middle": bb_m,
+        "bb_lower":  bb_l,
+        "bb_pct":    pct_b,
+        "stoch_k":   stoch_k,
+        "adx":       adx_v,
+        "atr":       round(atr_v, 2),
+        "atr_pct":   round(atr_pct, 3),
+        # Checks
+        "trend_ok":     e9 > e21,
+        "momentum_ok":  r14 > 50,
+        "macd_ok":      m_hist > 0,
+        "strong_trend": adx_v >= 25,
+        "vol_ok":       0.3 <= atr_pct <= 3.0,
+        # 24h market
         "high_24h":  round(high_24h, 2),
         "low_24h":   round(low_24h, 2),
         "change_24h_pct": round(change_24h_pct, 3),
         "series":    series,
+        # Market structure / "fundamentals" for a perpetual
+        "funding_rate_pct": round(fund_rate, 4) if fund_rate is not None else None,
+        "open_interest":    round(oi, 2)        if oi        is not None else None,
+        "volume_24h":       round(vol_24h, 2)   if vol_24h   is not None else None,
     })
 
 

@@ -301,6 +301,49 @@
   }
   .lm-chip.up { background: rgba(45,212,191,0.15); color: var(--green); }
 
+  /* Live Indicators panel — tabbed, dense */
+  .li-panel { display: flex; flex-direction: column; gap: 6px; }
+  .li-tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:6px; }
+  .li-tab {
+    background:transparent; border:none; color:var(--muted);
+    padding:6px 12px; font:inherit; font-size:10px; letter-spacing:1.2px;
+    cursor:pointer; text-transform:uppercase; border-bottom:2px solid transparent;
+  }
+  .li-tab.active { color:var(--text); border-bottom-color: var(--purple); }
+  .li-pane { display:none; }
+  .li-pane.active { display:block; }
+  .li-row {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:5px 2px; font-size:11px; border-bottom:1px solid var(--border);
+  }
+  .li-row:last-child { border-bottom:none; }
+  .li-k { color:var(--muted); letter-spacing:0.3px; }
+  .li-v { color:var(--text); font-weight:600; font-family: 'JetBrains Mono', monospace; }
+  .li-tag {
+    margin-left:6px; padding:1px 6px; border-radius:8px; font-size:9px; font-weight:600;
+    letter-spacing:0.5px; background: var(--panel2); color: var(--muted);
+  }
+  .li-tag.green { background: rgba(45,212,191,0.18); color: var(--green); }
+  .li-tag.red   { background: rgba(248,113,113,0.18); color: var(--red);   }
+  .li-tag.yellow{ background: rgba(251,191,36,0.18); color: var(--yellow); }
+
+  /* Bollinger %B bar */
+  .li-bb-bar { position:relative; height:18px; margin: 0 4px 6px; }
+  .li-bb-track {
+    position:absolute; left:0; right:0; top:7px; height:4px;
+    border-radius:2px;
+    background: linear-gradient(90deg, var(--red), var(--yellow), var(--green2), var(--yellow), var(--red));
+  }
+  .li-bb-dot {
+    position:absolute; top:2px; width:3px; height:14px; background:var(--text);
+    box-shadow:0 0 6px rgba(255,255,255,0.6); transition: left .3s;
+    transform: translateX(-50%);
+  }
+  .li-bb-labels {
+    position:absolute; top:14px; left:0; right:0; display:flex; justify-content:space-between;
+    font-size:8px; color:var(--muted); letter-spacing:0.5px;
+  }
+
   /* Live Indicators check rows */
   .li-check {
     background: var(--panel2); border-radius:8px; padding:8px 10px;
@@ -546,47 +589,123 @@
       </div>
 
       <!-- Live Indicators (BTC) -->
-      <div class="panel">
+      <div class="panel li-panel">
         <div class="panel-h">
           <span>⚡ Live Indicators</span>
           <span class="sub" id="li-symbol">BTCUSD</span>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
-          <div style="background:var(--panel2);border-radius:8px;padding:8px;">
-            <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">EMA(9)</div>
-            <div style="font-size:16px;font-weight:600;color:var(--cyan);" id="li-ema9">—</div>
+
+        <div class="li-tabs">
+          <button class="li-tab active" data-litab="tech">Technicals</button>
+          <button class="li-tab" data-litab="fund">Market</button>
+          <button class="li-tab" data-litab="checks">Checks</button>
+        </div>
+
+        <!-- TECHNICALS pane -->
+        <div class="li-pane active" data-litab="tech">
+          <div class="li-row">
+            <span class="li-k">EMA 9 / 21 / 50</span>
+            <span class="li-v"><span id="li-ema9">—</span> / <span id="li-ema21">—</span> / <span id="li-ema50">—</span></span>
           </div>
-          <div style="background:var(--panel2);border-radius:8px;padding:8px;">
-            <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">EMA(21)</div>
-            <div style="font-size:16px;font-weight:600;color:var(--cyan);" id="li-ema21">—</div>
+          <div class="li-row">
+            <span class="li-k">RSI (14)</span>
+            <span class="li-v"><span id="li-rsi">—</span> <span id="li-rsi-tag" class="li-tag">—</span></span>
           </div>
-          <div style="background:var(--panel2);border-radius:8px;padding:8px;">
-            <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">RSI(14)</div>
-            <div style="font-size:16px;font-weight:600;color:var(--cyan);" id="li-rsi">—</div>
+          <div class="li-row">
+            <span class="li-k">MACD (12,26,9)</span>
+            <span class="li-v"><span id="li-macd-line">—</span> / sig <span id="li-macd-sig">—</span> · hist <span id="li-macd-hist">—</span></span>
           </div>
-          <div style="background:var(--panel2);border-radius:8px;padding:8px;">
-            <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">PRICE</div>
-            <div style="font-size:16px;font-weight:600;color:var(--cyan);" id="li-price">—</div>
+          <div class="li-row">
+            <span class="li-k">BB %B</span>
+            <span class="li-v"><span id="li-bb">—</span></span>
+          </div>
+          <div class="li-bb-bar">
+            <div class="li-bb-track"></div>
+            <div class="li-bb-dot" id="li-bb-dot" style="left:50%;"></div>
+            <div class="li-bb-labels"><span>Lower</span><span>Mid</span><span>Upper</span></div>
+          </div>
+          <div class="li-row">
+            <span class="li-k">Stoch %K (14)</span>
+            <span class="li-v"><span id="li-stoch">—</span></span>
+          </div>
+          <div class="li-row">
+            <span class="li-k">ADX (14)</span>
+            <span class="li-v"><span id="li-adx">—</span> <span id="li-adx-tag" class="li-tag">—</span></span>
+          </div>
+          <div class="li-row">
+            <span class="li-k">ATR (14)</span>
+            <span class="li-v"><span id="li-atr">—</span> <span style="color:var(--muted);">(<span id="li-atr-pct">—</span>%)</span></span>
           </div>
         </div>
-        <div id="li-trend" class="li-check">
-          <div class="li-check-row">
-            <span class="li-mark">✓</span>
-            <div>
-              <div class="li-check-title">TREND CHECK</div>
-              <div class="li-check-sub" id="li-trend-sub">EMA(9) vs EMA(21)</div>
-            </div>
-            <span class="li-badge" id="li-trend-badge">—</span>
+
+        <!-- FUNDAMENTALS / MARKET pane -->
+        <div class="li-pane" data-litab="fund">
+          <div class="li-row">
+            <span class="li-k">Price</span>
+            <span class="li-v" id="li-price">—</span>
+          </div>
+          <div class="li-row">
+            <span class="li-k">Mark Price</span>
+            <span class="li-v" id="li-mark">—</span>
+          </div>
+          <div class="li-row">
+            <span class="li-k">24h Change</span>
+            <span class="li-v" id="li-24h-chg">—</span>
+          </div>
+          <div class="li-row">
+            <span class="li-k">24h High / Low</span>
+            <span class="li-v"><span id="li-hi">—</span> / <span id="li-lo">—</span></span>
+          </div>
+          <div class="li-row">
+            <span class="li-k">Funding Rate</span>
+            <span class="li-v" id="li-funding">—</span>
+          </div>
+          <div class="li-row">
+            <span class="li-k">Open Interest</span>
+            <span class="li-v" id="li-oi">—</span>
+          </div>
+          <div class="li-row">
+            <span class="li-k">24h Volume</span>
+            <span class="li-v" id="li-vol">—</span>
           </div>
         </div>
-        <div id="li-momentum" class="li-check" style="margin-top:6px;">
-          <div class="li-check-row">
-            <span class="li-mark">✓</span>
-            <div>
-              <div class="li-check-title">MOMENTUM</div>
-              <div class="li-check-sub" id="li-mom-sub">RSI</div>
+
+        <!-- CHECKS pane -->
+        <div class="li-pane" data-litab="checks">
+          <div id="li-trend" class="li-check">
+            <div class="li-check-row">
+              <span class="li-mark">✓</span>
+              <div><div class="li-check-title">TREND</div><div class="li-check-sub" id="li-trend-sub">EMA(9) vs EMA(21)</div></div>
+              <span class="li-badge" id="li-trend-badge">—</span>
             </div>
-            <span class="li-badge" id="li-mom-badge">—</span>
+          </div>
+          <div id="li-momentum" class="li-check" style="margin-top:5px;">
+            <div class="li-check-row">
+              <span class="li-mark">✓</span>
+              <div><div class="li-check-title">MOMENTUM</div><div class="li-check-sub" id="li-mom-sub">RSI</div></div>
+              <span class="li-badge" id="li-mom-badge">—</span>
+            </div>
+          </div>
+          <div id="li-macd-chk" class="li-check" style="margin-top:5px;">
+            <div class="li-check-row">
+              <span class="li-mark">✓</span>
+              <div><div class="li-check-title">MACD</div><div class="li-check-sub" id="li-macd-sub">Histogram</div></div>
+              <span class="li-badge" id="li-macd-badge">—</span>
+            </div>
+          </div>
+          <div id="li-adxchk" class="li-check" style="margin-top:5px;">
+            <div class="li-check-row">
+              <span class="li-mark">✓</span>
+              <div><div class="li-check-title">TREND STRENGTH</div><div class="li-check-sub" id="li-adxchk-sub">ADX</div></div>
+              <span class="li-badge" id="li-adxchk-badge">—</span>
+            </div>
+          </div>
+          <div id="li-volchk" class="li-check" style="margin-top:5px;">
+            <div class="li-check-row">
+              <span class="li-mark">✓</span>
+              <div><div class="li-check-title">VOLATILITY</div><div class="li-check-sub" id="li-volchk-sub">ATR%</div></div>
+              <span class="li-badge" id="li-volchk-badge">—</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1282,43 +1401,112 @@ function renderSymDetail(r) {
     </div>`;
 }
 
+// Live Indicators tab switching
+document.addEventListener('click', e => {
+  if (!e.target.classList.contains('li-tab')) return;
+  const tab = e.target.dataset.litab;
+  document.querySelectorAll('.li-tab').forEach(b => b.classList.toggle('active', b.dataset.litab === tab));
+  document.querySelectorAll('.li-pane').forEach(p => p.classList.toggle('active', p.dataset.litab === tab));
+});
+
+const fmtUSD = v => '$' + (+v).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+
 async function refreshLiveIndicators() {
   const r = await fetch('/api/btc_indicators'); const d = await r.json();
   if (!d.available) {
-    $('li-ema9').textContent = '—'; $('li-ema21').textContent = '—';
-    $('li-rsi').textContent = '—';  $('li-price').textContent = '—';
-    $('lm-price').textContent = '—'; $('lm-change').textContent = '—';
+    ['li-ema9','li-ema21','li-ema50','li-rsi','li-price','lm-price','lm-change',
+     'li-mark','li-funding','li-oi','li-vol','li-macd-line','li-macd-sig','li-macd-hist',
+     'li-bb','li-stoch','li-adx','li-atr','li-atr-pct']
+      .forEach(id => { const el = $(id); if (el) el.textContent = '—'; });
     return;
   }
-  // ── Live Market card ──
   const up = (d.change_24h_pct || 0) >= 0;
-  $('lm-price').textContent = '$' + d.price.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+  // ── Live Market card ──
+  $('lm-price').textContent  = fmtUSD(d.price);
   $('lm-change').textContent = (up ? '+' : '') + d.change_24h_pct.toFixed(2) + '%';
-  $('lm-change').className = 'lm-chip' + (up ? ' up' : '');
-  $('lm-high').textContent  = '$' + d.high_24h.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-  $('lm-low').textContent   = '$' + d.low_24h.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  $('lm-change').className   = 'lm-chip' + (up ? ' up' : '');
+  $('lm-high').textContent   = fmtUSD(d.high_24h);
+  $('lm-low').textContent    = fmtUSD(d.low_24h);
   drawSparkline('lm-spark', d.series, up);
+
+  // ── Live Indicators · Technicals ──
   $('li-symbol').textContent = d.symbol;
   $('li-ema9').textContent   = d.ema9.toLocaleString();
   $('li-ema21').textContent  = d.ema21.toLocaleString();
-  $('li-rsi').textContent    = (+d.rsi14).toFixed(2);
-  $('li-price').textContent  = d.price.toLocaleString();
+  $('li-ema50').textContent  = d.ema50.toLocaleString();
+  $('li-rsi').textContent    = d.rsi14.toFixed(1);
+  // RSI tag (oversold / neutral / overbought)
+  const rsiTag = $('li-rsi-tag');
+  if (d.rsi14 >= 70)      { rsiTag.textContent = 'OVERBOUGHT'; rsiTag.className = 'li-tag red'; }
+  else if (d.rsi14 <= 30) { rsiTag.textContent = 'OVERSOLD';   rsiTag.className = 'li-tag green'; }
+  else if (d.rsi14 > 50)  { rsiTag.textContent = 'BULLISH';    rsiTag.className = 'li-tag green'; }
+  else                    { rsiTag.textContent = 'BEARISH';    rsiTag.className = 'li-tag red'; }
 
-  // Trend
-  const tEl = $('li-trend');
-  tEl.classList.remove('met','miss');
-  tEl.classList.add(d.trend_ok ? 'met' : 'miss');
-  $('li-trend-sub').innerHTML = d.trend_ok
-    ? 'EMA(9) <b>&gt;</b> EMA(21)'
-    : 'EMA(9) <b>&lt;</b> EMA(21)';
-  $('li-trend-badge').textContent = d.trend_ok ? 'MET' : 'MISS';
+  $('li-macd-line').textContent = d.macd_line.toFixed(2);
+  $('li-macd-sig').textContent  = d.macd_signal.toFixed(2);
+  const mh = $('li-macd-hist');
+  mh.textContent = (d.macd_hist >= 0 ? '+' : '') + d.macd_hist.toFixed(2);
+  mh.style.color = d.macd_hist >= 0 ? 'var(--green)' : 'var(--red)';
 
-  // Momentum
-  const mEl = $('li-momentum');
-  mEl.classList.remove('met','miss');
-  mEl.classList.add(d.momentum_ok ? 'met' : 'miss');
-  $('li-mom-sub').innerHTML = `RSI <b>${(+d.rsi14).toFixed(1)}</b> ${d.rsi_label}`;
-  $('li-mom-badge').textContent = d.momentum_ok ? 'MET' : 'MISS';
+  $('li-bb').textContent = d.bb_pct.toFixed(1) + '%';
+  $('li-bb-dot').style.left = Math.max(0, Math.min(100, d.bb_pct)) + '%';
+
+  $('li-stoch').textContent = d.stoch_k.toFixed(1);
+
+  $('li-adx').textContent = d.adx.toFixed(1);
+  const adxTag = $('li-adx-tag');
+  if (d.adx >= 40)      { adxTag.textContent = 'STRONG';     adxTag.className = 'li-tag green'; }
+  else if (d.adx >= 25) { adxTag.textContent = 'TRENDING';   adxTag.className = 'li-tag green'; }
+  else if (d.adx >= 20) { adxTag.textContent = 'EMERGING';   adxTag.className = 'li-tag yellow'; }
+  else                  { adxTag.textContent = 'WEAK';       adxTag.className = 'li-tag red'; }
+
+  $('li-atr').textContent     = d.atr.toFixed(2);
+  $('li-atr-pct').textContent = d.atr_pct.toFixed(2);
+
+  // ── Live Indicators · Market / Fundamentals ──
+  $('li-price').textContent = fmtUSD(d.price);
+  $('li-mark').textContent  = d.mark_price ? fmtUSD(d.mark_price) : '—';
+  const ch = $('li-24h-chg');
+  ch.textContent = (up ? '+' : '') + d.change_24h_pct.toFixed(2) + '%';
+  ch.style.color = up ? 'var(--green)' : 'var(--red)';
+  $('li-hi').textContent = fmtUSD(d.high_24h);
+  $('li-lo').textContent = fmtUSD(d.low_24h);
+  if (d.funding_rate_pct !== null && d.funding_rate_pct !== undefined) {
+    const fr = $('li-funding');
+    const sign = d.funding_rate_pct >= 0 ? '+' : '';
+    fr.textContent = sign + d.funding_rate_pct.toFixed(4) + '%';
+    fr.style.color = d.funding_rate_pct > 0.01 ? 'var(--red)'
+                   : d.funding_rate_pct < -0.01 ? 'var(--green)' : 'var(--text)';
+  } else { $('li-funding').textContent = '—'; }
+  const fmtCompact = v => {
+    if (v == null) return '—';
+    if (v >= 1e9) return (v/1e9).toFixed(2) + 'B';
+    if (v >= 1e6) return (v/1e6).toFixed(2) + 'M';
+    if (v >= 1e3) return (v/1e3).toFixed(2) + 'K';
+    return v.toFixed(2);
+  };
+  $('li-oi').textContent  = fmtCompact(d.open_interest);
+  $('li-vol').textContent = fmtCompact(d.volume_24h);
+
+  // ── Live Indicators · Checks ──
+  const setCheck = (rowId, ok, badgeId, subId, subHtml) => {
+    const el = $(rowId);
+    el.classList.remove('met','miss');
+    el.classList.add(ok ? 'met' : 'miss');
+    if (badgeId) $(badgeId).textContent = ok ? 'MET' : 'MISS';
+    if (subId)   $(subId).innerHTML     = subHtml;
+  };
+  setCheck('li-trend',    d.trend_ok,   'li-trend-badge',  'li-trend-sub',
+           d.trend_ok ? 'EMA(9) <b>&gt;</b> EMA(21)' : 'EMA(9) <b>&lt;</b> EMA(21)');
+  setCheck('li-momentum', d.momentum_ok,'li-mom-badge',    'li-mom-sub',
+           `RSI <b>${d.rsi14.toFixed(1)}</b> ${d.rsi_label}`);
+  setCheck('li-macd-chk', d.macd_ok,    'li-macd-badge',   'li-macd-sub',
+           `Histogram <b>${d.macd_hist >= 0 ? '+' : ''}${d.macd_hist.toFixed(2)}</b>`);
+  setCheck('li-adxchk',   d.strong_trend,'li-adxchk-badge','li-adxchk-sub',
+           `ADX <b>${d.adx.toFixed(1)}</b> ${d.adx >= 25 ? 'strong' : 'weak'}`);
+  setCheck('li-volchk',   d.vol_ok,     'li-volchk-badge', 'li-volchk-sub',
+           `ATR <b>${d.atr_pct.toFixed(2)}%</b> ${d.vol_ok ? 'tradeable' : 'out of band'}`);
 }
 
 async function refreshLogs() {

@@ -508,7 +508,7 @@
           <span id="lm-price" style="font-size:22px;font-weight:700;color:var(--text);">—</span>
           <span id="lm-change" class="lm-chip">—</span>
         </div>
-        <div style="position:relative;height:60px;margin:6px 0;"><canvas id="lm-spark"></canvas></div>
+        <div style="position:relative;height:60px;margin:6px 0;"><canvas id="lm-spark" style="display:block;width:100%;height:100%;"></canvas></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;margin-top:4px;">
           <div>
             <div style="color:var(--text);font-weight:600;" id="lm-high">—</div>
@@ -1071,8 +1071,17 @@ async function refreshMCX() {
 function drawSparkline(canvasId, series, up) {
   const c = $(canvasId);
   if (!c || !series || series.length < 2) return;
+  // Make canvas fill its parent visually
+  c.style.display = 'block';
+  c.style.width  = '100%';
+  c.style.height = '100%';
   const dpr = window.devicePixelRatio || 1;
-  const W = c.clientWidth || 200, H = c.clientHeight || 60;
+  // Use the parent's bounding box if canvas itself reports zero
+  const parent = c.parentElement;
+  let W = c.clientWidth, H = c.clientHeight;
+  if (!W && parent) W = parent.clientWidth;
+  if (!H && parent) H = parent.clientHeight;
+  W = W || 200; H = H || 60;
   c.width = W * dpr; c.height = H * dpr;
   const ctx = c.getContext('2d'); ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);

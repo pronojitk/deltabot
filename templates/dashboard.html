@@ -272,6 +272,28 @@
   .panel-h .sub { font-size:11px; color:var(--muted); font-weight:400; }
 
   /* Screener mini */
+  /* Live Indicators check rows */
+  .li-check {
+    background: var(--panel2); border-radius:8px; padding:8px 10px;
+    border-left:3px solid var(--muted); transition: border-color .2s;
+  }
+  .li-check.met  { border-left-color: var(--green); background: rgba(45,212,191,0.05); }
+  .li-check.miss { border-left-color: var(--red);   background: rgba(248,113,113,0.05); }
+  .li-check-row { display:flex; align-items:center; gap:10px; }
+  .li-mark { font-size:14px; color: var(--muted); font-weight:700; }
+  .li-check.met  .li-mark { color: var(--green); }
+  .li-check.miss .li-mark { color: var(--red); }
+  .li-check-title { font-size:11px; font-weight:700; color:var(--text); letter-spacing:0.5px; }
+  .li-check.met  .li-check-title { color: var(--green); }
+  .li-check.miss .li-check-title { color: var(--red); }
+  .li-check-sub { font-size:10px; color:var(--muted); margin-top:1px; }
+  .li-badge {
+    margin-left:auto; padding:2px 8px; border-radius:10px; font-size:9px; font-weight:700;
+    letter-spacing:1px; border:1px solid currentColor; color: var(--muted);
+  }
+  .li-check.met  .li-badge { color: var(--green); background: rgba(45,212,191,0.12); }
+  .li-check.miss .li-badge { color: var(--red);   background: rgba(248,113,113,0.12); }
+
   .scr-counts { display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:6px; margin-bottom:10px; }
   .scr-cell {
     background: var(--panel2); border-radius:8px; padding:8px; text-align:center;
@@ -404,6 +426,52 @@
         <div class="bal-cell"><div class="lbl">Available</div><div class="val" id="t-avail">$0</div></div>
         <div class="bal-cell"><div class="lbl">In Bots</div><div class="val" id="t-inbots">$0</div></div>
         <div class="bal-cell"><div class="lbl">🔒 In Positions</div><div class="val" id="t-inpos">$0</div></div>
+      </div>
+    </div>
+
+    <!-- Live Indicators (BTC) -->
+    <div class="panel">
+      <div class="panel-h">
+        <span>⚡ Live Indicators</span>
+        <span class="sub" id="li-symbol">BTCUSD</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">
+        <div style="background:var(--panel2);border-radius:8px;padding:8px;">
+          <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">EMA(9)</div>
+          <div style="font-size:16px;font-weight:600;color:var(--cyan);" id="li-ema9">—</div>
+        </div>
+        <div style="background:var(--panel2);border-radius:8px;padding:8px;">
+          <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">EMA(21)</div>
+          <div style="font-size:16px;font-weight:600;color:var(--cyan);" id="li-ema21">—</div>
+        </div>
+        <div style="background:var(--panel2);border-radius:8px;padding:8px;">
+          <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">RSI(14)</div>
+          <div style="font-size:16px;font-weight:600;color:var(--cyan);" id="li-rsi">—</div>
+        </div>
+        <div style="background:var(--panel2);border-radius:8px;padding:8px;">
+          <div style="font-size:9px;color:var(--muted);letter-spacing:1px;">PRICE</div>
+          <div style="font-size:16px;font-weight:600;color:var(--cyan);" id="li-price">—</div>
+        </div>
+      </div>
+      <div id="li-trend" class="li-check">
+        <div class="li-check-row">
+          <span class="li-mark">✓</span>
+          <div>
+            <div class="li-check-title">TREND CHECK</div>
+            <div class="li-check-sub" id="li-trend-sub">EMA(9) vs EMA(21)</div>
+          </div>
+          <span class="li-badge" id="li-trend-badge">—</span>
+        </div>
+      </div>
+      <div id="li-momentum" class="li-check" style="margin-top:6px;">
+        <div class="li-check-row">
+          <span class="li-mark">✓</span>
+          <div>
+            <div class="li-check-title">MOMENTUM</div>
+            <div class="li-check-sub" id="li-mom-sub">RSI</div>
+          </div>
+          <span class="li-badge" id="li-mom-badge">—</span>
+        </div>
       </div>
     </div>
 
@@ -1080,6 +1148,36 @@ async function refreshMCX() {
   }).join('') || '<tr><td colspan="9" style="color:var(--muted);text-align:center;padding:14px;">No MCX trades yet</td></tr>';
 }
 
+async function refreshLiveIndicators() {
+  const r = await fetch('/api/btc_indicators'); const d = await r.json();
+  if (!d.available) {
+    $('li-ema9').textContent = '—'; $('li-ema21').textContent = '—';
+    $('li-rsi').textContent = '—';  $('li-price').textContent = '—';
+    return;
+  }
+  $('li-symbol').textContent = d.symbol;
+  $('li-ema9').textContent   = d.ema9.toLocaleString();
+  $('li-ema21').textContent  = d.ema21.toLocaleString();
+  $('li-rsi').textContent    = (+d.rsi14).toFixed(2);
+  $('li-price').textContent  = d.price.toLocaleString();
+
+  // Trend
+  const tEl = $('li-trend');
+  tEl.classList.remove('met','miss');
+  tEl.classList.add(d.trend_ok ? 'met' : 'miss');
+  $('li-trend-sub').innerHTML = d.trend_ok
+    ? 'EMA(9) <b>&gt;</b> EMA(21)'
+    : 'EMA(9) <b>&lt;</b> EMA(21)';
+  $('li-trend-badge').textContent = d.trend_ok ? 'MET' : 'MISS';
+
+  // Momentum
+  const mEl = $('li-momentum');
+  mEl.classList.remove('met','miss');
+  mEl.classList.add(d.momentum_ok ? 'met' : 'miss');
+  $('li-mom-sub').innerHTML = `RSI <b>${(+d.rsi14).toFixed(1)}</b> ${d.rsi_label}`;
+  $('li-mom-badge').textContent = d.momentum_ok ? 'MET' : 'MISS';
+}
+
 async function refreshLogs() {
   const r = await fetch('/api/logs'); const logs = await r.json();
   $('log-pane').innerHTML = logs.slice().reverse().map(l =>
@@ -1096,6 +1194,7 @@ async function refreshAll() {
     safe(refreshTrades,       'trades'),
     safe(refreshStrategies,   'strategies'),
     safe(refreshDashScreener, 'screener'),
+    safe(refreshLiveIndicators,'live-ind'),
     safe(refreshMCX,          'mcx'),
     safe(refreshLogs,         'logs'),
   ]);

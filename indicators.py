@@ -56,6 +56,23 @@ def compute_emas(candles: list[dict]) -> tuple[list[float], list[float]]:
     return ema(closes, EMA_SHORT), ema(closes, EMA_LONG)
 
 
+def rsi(closes: list[float], period: int = 14) -> float:
+    """Wilder's RSI of the most recent value. 0.0 if insufficient data."""
+    if len(closes) <= period:
+        return 0.0
+    gains  = [max(closes[i] - closes[i-1], 0.0) for i in range(1, len(closes))]
+    losses = [max(closes[i-1] - closes[i], 0.0) for i in range(1, len(closes))]
+    avg_g = sum(gains[:period])  / period
+    avg_l = sum(losses[:period]) / period
+    for i in range(period, len(gains)):
+        avg_g = (avg_g * (period - 1) + gains[i])  / period
+        avg_l = (avg_l * (period - 1) + losses[i]) / period
+    if avg_l == 0:
+        return 100.0
+    rs = avg_g / avg_l
+    return 100.0 - (100.0 / (1.0 + rs))
+
+
 # ---------------------------------------------------------------------------
 # Average True Range (Wilder's smoothing)
 # ---------------------------------------------------------------------------

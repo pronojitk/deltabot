@@ -167,6 +167,32 @@ def _tick_open_prices():
         logger.debug("tick failed: %s", e)
 
 
+@app.route("/api/btc_indicators")
+def api_btc_indicators():
+    """Live EMA(9)/EMA(21)/RSI(14)/price for BTC — Donchian bot's bias check."""
+    from delta_client import get_ohlcv
+    from indicators import ema, rsi
+    candles = get_ohlcv("BTCUSD", "15m", 100) or []
+    if len(candles) < 30:
+        return jsonify({"available": False})
+    closes = [c["close"] for c in candles]
+    e9    = ema(closes, 9)[-1]  if len(closes) >= 9  else 0.0
+    e21   = ema(closes, 21)[-1] if len(closes) >= 21 else 0.0
+    r14   = rsi(closes, 14)
+    price = closes[-1]
+    return jsonify({
+        "available": True,
+        "symbol":    "BTCUSD",
+        "price":     round(price, 2),
+        "ema9":      round(e9, 2),
+        "ema21":     round(e21, 2),
+        "rsi14":     round(r14, 3),
+        "trend_ok":  e9 > e21,                  # EMA(9) > EMA(21)
+        "momentum_ok": r14 > 50,                # RSI bullish
+        "rsi_label": "bullish" if r14 > 50 else "bearish" if r14 < 50 else "neutral",
+    })
+
+
 @app.route("/api/state")
 def api_state():
     """Top-level dashboard state — polled every 2s by the frontend."""

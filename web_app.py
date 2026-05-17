@@ -351,60 +351,98 @@ def api_strategies():
 
 @app.route("/api/symbol_pnl")
 def api_symbol_pnl():
-    """Per-symbol P&L breakdown for the dashboard."""
-    rows: dict[str, dict] = {}
+    """Per-symbol P&L breakdown with deeper analysis."""
+    by_sym: dict[str, list[dict]] = {}
     for t in state.tester.trades:
-        sym = t.get("symbol", "?")
-        r = rows.setdefault(sym, {
-            "symbol":  sym,
-            "trades":  0, "open": 0, "wins": 0, "losses": 0, "timeouts": 0,
-            "pnl":     0.0,
-            "wins_pnl":  0.0,
-            "losses_pnl": 0.0,
-            "best":  None, "worst": None,
-            "last_ts": 0,
-        })
-        r["trades"] += 1
-        ts = t.get("entry_time") or 0
-        if ts and ts > r["last_ts"]: r["last_ts"] = ts
-        st = t.get("status")
-        if st == "OPEN":
-            r["open"] += 1
-            continue
-        p = t.get("pnl_usd") or 0
-        r["pnl"] += p
-        if st == "WIN":
-            r["wins"] += 1; r["wins_pnl"]   += p
-        elif st == "LOSS":
-            r["losses"] += 1; r["losses_pnl"] += p
-        elif st == "TIMEOUT":
-            r["timeouts"] += 1
-        # Best / worst
-        if r["best"]  is None or p > r["best"]:  r["best"]  = p
-        if r["worst"] is None or p < r["worst"]: r["worst"] = p
+        by_sym.setdefault(t.get("symbol", "?"), []).append(t)
 
     out = []
-    for r in rows.values():
-        closed = r["wins"] + r["losses"] + r["timeouts"]
-        avg_win  = (r["wins_pnl"]   / r["wins"])  if r["wins"]   else 0.0
-        avg_loss = (r["losses_pnl"] / r["losses"]) if r["losses"] else 0.0
-        pf = (r["wins_pnl"] / -r["losses_pnl"]) if r["losses_pnl"] < 0 else (float("inf") if r["wins_pnl"] > 0 else 0.0)
+    for sym, trades in by_sym.items():
+        # Sort by entry time for streak + equity curve
+        trades_sorted = sorted(trades, key=lambda t: t.get("entry_time") or 0)
+        closed_sorted = [t for t in trades_sorted if t.get("status") != "OPEN"
+                         and t.get("pnl_usd") is not None]
+
+        n_total = len(trades_sorted)
+        open_n  = sum(1 for t in trades_sorted if t.get("status") == "OPEN")
+        wins    = [t for t in trades_sorted if t.get("status") == "WIN"]
+        losses  = [t for t in trades_sorted if t.get("status") == "LOSS"]
+        timeouts= [t for t in trades_sorted if t.get("status") == "TIMEOUT"]
+        closed_n = len(wins) + len(losses) + len(timeouts)
+
+        wins_pnl   = sum(t.get("pnl_usd", 0) for t in wins)
+        losses_pnl = sum(t.get("pnl_usd", 0) for t in losses)
+        timeout_pnl= sum(t.get("pnl_usd", 0) for t in timeouts)
+        total_pnl  = wins_pnl + losses_pnl + timeout_pnl
+
+        # Side breakdown
+        long_trades  = [t for t in closed_sorted if t.get("side") == "LONG"]
+        short_trades = [t for t in closed_sorted if t.get("side") == "SHORT"]
+        long_pnl  = sum(t.get("pnl_usd", 0) for t in long_trades)
+        short_pnl = sum(t.get("pnl_usd", 0) for t in short_trades)
+
+        # Streaks (consecutive wins/losses, ignoring timeouts)
+        streak_w = streak_l = best_w = best_l = 0
+        for t in closed_sorted:
+            st = t.get("status")
+            if st == "WIN":
+                streak_w += 1; streak_l = 0
+                if streak_w > best_w: best_w = streak_w
+            elif st == "LOSS":
+                streak_l += 1; streak_w = 0
+                if streak_l > best_l: best_l = streak_l
+            else:
+                streak_w = streak_l = 0
+
+        # Avg hold time (bars)
+        bars_vals = [t.get("bars_held", 0) for t in closed_sorted if t.get("bars_held")]
+        avg_bars = sum(bars_vals) / len(bars_vals) if bars_vals else 0
+
+        # Equity sparkline (cumulative P&L per closed trade, max ~30 points)
+        running = 0.0
+        equity_pts = []
+        for t in closed_sorted:
+            running += t.get("pnl_usd", 0)
+            equity_pts.append(round(running, 2))
+        if len(equity_pts) > 30:
+            step = max(1, len(equity_pts) // 30)
+            equity_pts = equity_pts[::step][-30:]
+
+        avg_win  = (wins_pnl   / len(wins))   if wins   else 0.0
+        avg_loss = (losses_pnl / len(losses)) if losses else 0.0
+        pf = (wins_pnl / -losses_pnl) if losses_pnl < 0 else (float("inf") if wins_pnl > 0 else 0.0)
+        expectancy = (total_pnl / closed_n) if closed_n else 0.0
+        bests = max((t.get("pnl_usd", 0) for t in closed_sorted), default=0)
+        worsts = min((t.get("pnl_usd", 0) for t in closed_sorted), default=0)
+
         out.append({
-            "symbol":    r["symbol"],
-            "trades":    r["trades"],
-            "open":      r["open"],
-            "closed":    closed,
-            "wins":      r["wins"],
-            "losses":    r["losses"],
-            "timeouts":  r["timeouts"],
-            "win_rate":  round(r["wins"] / closed * 100, 1) if closed else 0.0,
-            "avg_win":   round(avg_win,  2),
-            "avg_loss":  round(avg_loss, 2),
-            "pnl":       round(r["pnl"], 2),
-            "best":      round(r["best"]  or 0, 2),
-            "worst":     round(r["worst"] or 0, 2),
+            "symbol":     sym,
+            "trades":     n_total,
+            "open":       open_n,
+            "closed":     closed_n,
+            "wins":       len(wins),
+            "losses":     len(losses),
+            "timeouts":   len(timeouts),
+            "win_rate":   round(len(wins) / closed_n * 100, 1) if closed_n else 0.0,
+            "avg_win":    round(avg_win,  2),
+            "avg_loss":   round(avg_loss, 2),
+            "pnl":        round(total_pnl, 2),
+            "best":       round(bests, 2),
+            "worst":      round(worsts, 2),
             "profit_factor": (None if pf == float("inf") else round(pf, 2)),
-            "last_ts":   int(r["last_ts"] or 0),
+            "expectancy": round(expectancy, 2),
+            "best_win_streak":  best_w,
+            "best_loss_streak": best_l,
+            "avg_bars":   round(avg_bars, 1),
+            # Sides
+            "long_trades":  len(long_trades),
+            "short_trades": len(short_trades),
+            "long_pnl":     round(long_pnl, 2),
+            "short_pnl":    round(short_pnl, 2),
+            # Equity sparkline + time
+            "equity_pts":   equity_pts,
+            "first_ts":     int(trades_sorted[0].get("entry_time") or 0) if trades_sorted else 0,
+            "last_ts":      int(trades_sorted[-1].get("entry_time") or 0) if trades_sorted else 0,
         })
     out.sort(key=lambda r: -r["pnl"])
     return jsonify(out)

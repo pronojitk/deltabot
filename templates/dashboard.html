@@ -280,6 +280,11 @@
   .panel-h .sub { font-size:11px; color:var(--muted); font-weight:400; }
 
   /* Screener mini */
+  /* Symbol P&L expandable rows */
+  tr.sp-row:hover td { background: rgba(167,139,250,0.06); }
+  tr.sp-detail td { background: var(--panel2) !important; }
+  tr.sp-detail:hover td { background: var(--panel2) !important; }
+
   /* Performance Stats panel */
   .ps-row { display:flex; align-items:center; padding:8px 2px; gap:8px; font-size:12px; }
   .ps-label { color: var(--muted); flex:1; letter-spacing:0.3px; }
@@ -1094,8 +1099,10 @@ function drawSparkline(canvasId, series, up) {
   ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.stroke();
 }
 
+let _spExpanded = null;   // symbol whose detail row is open
 async function refreshSymbolPnL() {
   const r = await fetch('/api/symbol_pnl'); const rows = await r.json();
+  window._spRows = rows;
   const fmtDT = ts => {
     if (!ts) return '—';
     const d = new Date(+ts * 1000);
@@ -1107,8 +1114,8 @@ async function refreshSymbolPnL() {
       '<tr><td colspan="13" style="color:var(--muted);text-align:center;padding:18px;">No trades yet</td></tr>';
     $('sp-total-trades').textContent = '0 trades';
     $('sp-total-pnl').textContent    = '$0';
-    $('sp-winners').textContent      = '0 winning symbols';
-    $('sp-losers').textContent       = '0 losing symbols';
+    $('sp-winners').textContent      = '0 winning';
+    $('sp-losers').textContent       = '0 losing';
     return;
   }
   const totalTrades = rows.reduce((a,r) => a + r.trades, 0);
@@ -1126,8 +1133,13 @@ async function refreshSymbolPnL() {
     const pfText = r.profit_factor === null ? '∞' : r.profit_factor.toFixed(2);
     const pfCls  = r.profit_factor === null ? 'pos' :
                    r.profit_factor >= 1.0 ? 'pos' : 'neg';
-    return `<tr>
-      <td><b>${r.symbol}</b></td>
+    const isOpen = _spExpanded === r.symbol;
+    const detailHtml = isOpen ? `
+      <tr class="sp-detail"><td colspan="13" style="padding:0;background:var(--panel2);">
+        ${renderSymDetail(r)}
+      </td></tr>` : '';
+    return `<tr class="sp-row" data-sym="${r.symbol}" style="cursor:pointer;${isOpen?'background:var(--panel2);':''}">
+      <td><b>${r.symbol}</b> ${isOpen?'▼':'▸'}</td>
       <td>${r.trades}${r.open ? ' <span style="color:var(--yellow);font-size:10px;">('+r.open+'o)</span>' : ''}</td>
       <td class="pos">${r.wins}</td>
       <td class="neg">${r.losses}</td>
@@ -1140,8 +1152,60 @@ async function refreshSymbolPnL() {
       <td class="neg">${r.worst < 0 ?  '$'+r.worst.toFixed(2) : '—'}</td>
       <td class="${pnlCls}" style="font-weight:600;">${(r.pnl >= 0 ? '+' : '') + '$' + r.pnl.toFixed(2)}</td>
       <td style="color:var(--muted);font-size:10px;">${fmtDT(r.last_ts)}</td>
-    </tr>`;
+    </tr>${detailHtml}`;
   }).join('');
+
+  // Click to expand
+  document.querySelectorAll('.sp-row').forEach(tr => {
+    tr.onclick = () => {
+      const sym = tr.dataset.sym;
+      _spExpanded = (_spExpanded === sym) ? null : sym;
+      refreshSymbolPnL();
+    };
+  });
+  // Draw sparkline for the open one
+  if (_spExpanded) {
+    const r = rows.find(x => x.symbol === _spExpanded);
+    if (r) drawSparkline('sp-eq-spark', r.equity_pts || [], (r.pnl || 0) >= 0);
+  }
+}
+
+function renderSymDetail(r) {
+  const longUp  = r.long_pnl  >= 0 ? 'pos' : 'neg';
+  const shortUp = r.short_pnl >= 0 ? 'pos' : 'neg';
+  const exp = r.expectancy || 0;
+  const expCls = exp > 0 ? 'pos' : exp < 0 ? 'neg' : 'neutral';
+  return `
+    <div style="padding:14px 18px;display:grid;grid-template-columns:1fr 1fr 2fr;gap:18px;">
+      <div>
+        <div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:6px;">SIDE BREAKDOWN</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);">
+          <span>LONG  ${r.long_trades}T</span>
+          <span class="${longUp}" style="font-weight:600;">${r.long_pnl>=0?'+':''}$${r.long_pnl.toFixed(2)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;">
+          <span>SHORT ${r.short_trades}T</span>
+          <span class="${shortUp}" style="font-weight:600;">${r.short_pnl>=0?'+':''}$${r.short_pnl.toFixed(2)}</span>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:6px;">METRICS</div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;"><span>Expectancy</span><span class="${expCls}" style="font-weight:600;">${exp>=0?'+':''}$${exp.toFixed(2)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;"><span>Best win streak</span><span class="pos" style="font-weight:600;">${r.best_win_streak}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;"><span>Worst loss streak</span><span class="neg" style="font-weight:600;">${r.best_loss_streak}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;"><span>Avg hold</span><span style="font-weight:600;">${r.avg_bars} bars</span></div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:6px;">CUMULATIVE P&L (closed trades)</div>
+        <div style="position:relative;height:90px;background:var(--bg2);border-radius:6px;padding:4px;">
+          <canvas id="sp-eq-spark"></canvas>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;display:flex;justify-content:space-between;">
+          <span>${r.closed} closed trades</span>
+          <span class="${r.pnl>=0?'pos':'neg'}">${r.pnl>=0?'+':''}$${r.pnl.toFixed(2)} cumulative</span>
+        </div>
+      </div>
+    </div>`;
 }
 
 async function refreshLiveIndicators() {

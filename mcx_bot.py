@@ -82,8 +82,8 @@ MARKET_CLOSE   = dtime(15, 30)   # NSE close
 EOD_FLAT_TIME  = dtime(15, 25)   # auto-flat any open paper trade here
 RR_RATIO       = 2.0             # target = entry + 2 × risk  (1:2)
 SCAN_INTERVAL  = 60              # seconds between yfinance polls
-# Per symbol per day: max 1 LONG (5-min close > ORB high) AND max 1 SHORT
-# (5-min close < ORB low). Total of up to 2 trades per symbol, one per side.
+# Per symbol per day: max 1 trade total (whichever side fires first wins;
+# no re-entry the same day even if the opposite side breaks out later).
 
 logging.basicConfig(
     level=logging.INFO,
@@ -332,18 +332,14 @@ class MCXBot:
 
             orb = self.orb[sym]
 
-            # Skip if both sides already taken today for this symbol
-            if (sym, "LONG") in self.trades_today and (sym, "SHORT") in self.trades_today:
+            # ONE trade per symbol per day — either side, first signal wins
+            if (sym, "LONG") in self.trades_today or (sym, "SHORT") in self.trades_today:
                 continue
-            # Don't pile a new trade on top of an existing OPEN one for this symbol
             if sym in self.positions:
                 continue
 
             sig = self._check_signal(df, orb, today)
             if not sig: continue
-            # Skip if THIS side already taken today
-            if (sym, sig["side"]) in self.trades_today:
-                continue
 
             self.trades_today.add((sym, sig["side"]))
             self._open_trade(sym, sig, orb)

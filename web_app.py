@@ -29,7 +29,7 @@ try:
 except Exception as _e:
     MCX_AVAILABLE = False
     MCXBot = None
-    logging.getLogger("web").warning("MCX bot unavailable: %s", _e)
+    logging.getLogger("web").warning("Indian-ORB bot unavailable: %s", _e)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,11 +63,11 @@ class AppState:
                 self.log("SIGNAL", f"MCX {event['trade']['side']} {event['trade']['symbol']} @ {event['trade']['entry']:.2f}")
             elif t == "mcx_closed":
                 tr = event["trade"]
-                self.log("TRADE", f"MCX CLOSE {tr['side']} {tr['symbol']} {tr['exit_reason']} @ {tr.get('exit_price'):.2f} | {tr['pnl_pct']:.2f}%")
+                self.log("TRADE", f"Indian-ORB CLOSE {tr['side']} {tr['symbol']} {tr['exit_reason']} @ {tr.get('exit_price'):.2f} | {tr['pnl_pct']:.2f}%")
             elif t == "mcx_startup":
-                self.log("INFO", f"MCX bot started — {len(event.get('symbols', []))} symbols")
+                self.log("INFO", f"Indian-ORB bot started — {len(event.get('symbols', []))} symbols")
             elif t == "mcx_stopped":
-                self.log("INFO", "MCX bot stopped")
+                self.log("INFO", "Indian-ORB bot stopped")
 
     def log(self, level: str, msg: str) -> None:
         self.logs.append({
@@ -424,12 +424,12 @@ def api_strategies():
         s["currency"]     = "$"
         out.append(s)
 
-    # Append MCX-ORB (it has its own engine/account, separate from Delta)
+    # Append Indian-ORB (it has its own engine/account, separate from Delta)
     if state.mcx_engine:
         snap = state.mcx_engine.get_state()
         acct = snap.get("account", {})
         out.append({
-            "strategy":     "MCX-ORB",
+            "strategy":     "Indian-ORB",
             "trades":       acct.get("trades", 0) + len(snap.get("open_positions", [])),
             "open":         len(snap.get("open_positions", [])),
             "wins":         acct.get("wins", 0),
@@ -667,7 +667,7 @@ def api_stop():
 
 @app.route("/api/mcx")
 def api_mcx():
-    """MCX bot state for the dashboard."""
+    """Indian-ORB bot state for the dashboard."""
     if not state.mcx_engine:
         return jsonify({"available": MCX_AVAILABLE, "running": False,
                         "symbols": [], "orb": {}, "open_positions": [], "history": []})

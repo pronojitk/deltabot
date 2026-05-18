@@ -957,7 +957,7 @@
         <div class="tab" data-sub="signals">Signals</div>
         <div class="tab" data-sub="trades">Trade History</div>
         <div class="tab" data-sub="symbol-pnl">Symbol P&L</div>
-        <div class="tab" data-sub="mcx">🇮🇳 MCX (ORB)</div>
+        <div class="tab" data-sub="mcx">🇮🇳 Indian-ORB</div>
         <div class="tab" data-sub="logs">Log</div>
       </div>
       <div class="sub-tab-content active" id="sub-positions">
@@ -1050,7 +1050,7 @@
   <span id="sb-status">○ BOT IDLE</span>
   <span id="sb-symbols">0 symbols</span>
   <span id="sb-scan">No scans yet</span>
-  <span id="sb-strategy">DONCHIAN + GOLD + MCX-ORB</span>
+  <span id="sb-strategy">DONCHIAN + GOLD + INDIAN-ORB</span>
   <span>READY</span>
 </div>
 
@@ -1450,7 +1450,7 @@ async function refreshMCX() {
       <td>${t.notional_inr != null ? fmtINR(t.notional_inr) : '—'}</td>
       <td>${(+t.orb_low).toFixed(2)} – ${(+t.orb_high).toFixed(2)}</td>
       <td style="color:var(--muted);font-size:10px;">${(t.entry_time||'').replace('T',' ').slice(5,16)}</td>
-    </tr>`).join('') || '<tr><td colspan="10" style="color:var(--muted);text-align:center;padding:14px;">No open MCX positions</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="10" style="color:var(--muted);text-align:center;padding:14px;">No open Indian-ORB positions</td></tr>';
 
   // History
   const hist = (d.history || []).slice().reverse();
@@ -1469,7 +1469,7 @@ async function refreshMCX() {
       <td>${t.exit_reason || '—'}</td>
       <td style="color:var(--muted);font-size:10px;">${(t.exit_time||'').replace('T',' ').slice(5,16)}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="9" style="color:var(--muted);text-align:center;padding:14px;">No MCX trades yet</td></tr>';
+  }).join('') || '<tr><td colspan="9" style="color:var(--muted);text-align:center;padding:14px;">No Indian-ORB trades yet</td></tr>';
 }
 
 function drawSparkline(canvasId, series, up) {

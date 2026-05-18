@@ -1,5 +1,5 @@
 """
-MCX Opening Range Breakout (ORB) Strategy.
+Indian (NSE F&O) Opening Range Breakout (ORB) Strategy.
 
 Strategy:
   • First 5-min candle = 09:15–09:20 IST (NSE open + 5min). This is the "ORB".
@@ -38,17 +38,33 @@ from telegram_alert import send_alert
 
 IST = pytz.timezone("Asia/Kolkata")
 
-# ─── Symbols (yfinance tickers — NSE ETF proxies for MCX commodities) ──────
-# Edit this list as needed. Format: "<ticker>.NS" for NSE.
-MCX_SYMBOLS = [
-    "MCX.NS",           # MCX Ltd (the exchange company itself)
-    "GOLDBEES.NS",      # Nippon India Gold ETF (gold proxy)
-    "SILVERBEES.NS",    # Nippon India Silver ETF
-    "GOLDIETF.NS",      # ICICI Gold ETF
-    "HINDPETRO.NS",     # Crude oil proxy (refiner)
-    "ONGC.NS",          # Crude oil proxy (producer)
-    "VEDL.NS",          # Base metals (zinc/copper/aluminium)
+# ─── Symbols (NSE F&O stocks — most liquid ~60 names). Format "<ticker>.NS". ──
+# Add/remove as you like; the bot scans whatever's in this list during 9:15–15:30 IST.
+# yfinance caps 5-min intraday data at ~60 days; rate-limits aggressive polling, so
+# don't expand much above ~80 symbols unless you increase SCAN_INTERVAL.
+NSE_FNO_SYMBOLS = [
+    # Nifty 50 (most liquid F&O — index heavyweights)
+    "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
+    "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "LT.NS", "ITC.NS",
+    "AXISBANK.NS", "HCLTECH.NS", "BAJFINANCE.NS", "ASIANPAINT.NS", "MARUTI.NS",
+    "NESTLEIND.NS", "WIPRO.NS", "ULTRACEMCO.NS", "SUNPHARMA.NS", "TITAN.NS",
+    "BAJAJFINSV.NS", "NTPC.NS", "POWERGRID.NS", "M&M.NS", "TECHM.NS",
+    "COALINDIA.NS", "ONGC.NS", "JSWSTEEL.NS", "ADANIENT.NS", "ADANIPORTS.NS",
+    "INDUSINDBK.NS", "BPCL.NS", "HINDALCO.NS", "GRASIM.NS", "EICHERMOT.NS",
+    "BRITANNIA.NS", "DRREDDY.NS", "CIPLA.NS", "DIVISLAB.NS", "HEROMOTOCO.NS",
+    "TATAMOTORS.NS", "TATASTEEL.NS", "UPL.NS", "BAJAJ-AUTO.NS", "SHRIRAMFIN.NS",
+    "APOLLOHOSP.NS", "LTIM.NS", "HDFCLIFE.NS", "SBILIFE.NS", "TATACONSUM.NS",
+    # Bank / NBFC F&O
+    "BANKBARODA.NS", "CANBK.NS", "PNB.NS", "FEDERALBNK.NS", "IDFCFIRSTB.NS",
+    "AUBANK.NS", "BANDHANBNK.NS", "CHOLAFIN.NS", "MUTHOOTFIN.NS", "SBICARD.NS",
+    # PSU + commodity / energy (covers your old MCX proxies)
+    "MCX.NS", "VEDL.NS", "HINDPETRO.NS", "IOC.NS", "GAIL.NS",
+    "PFC.NS", "RECLTD.NS", "ADANIGREEN.NS", "TATAPOWER.NS", "JSWENERGY.NS",
+    # ETF / commodity exposure (kept from old MCX list)
+    "GOLDBEES.NS", "SILVERBEES.NS",
 ]
+# Backward-compat alias so any legacy code keeps working.
+MCX_SYMBOLS = NSE_FNO_SYMBOLS
 
 # ─── Account (INR-denominated, separate from Delta USD account) ────────────
 MCX_STARTING_BALANCE_INR = 40_000.0   # ₹40,000 starting capital
@@ -57,6 +73,7 @@ MCX_MARGIN_PER_TRADE_INR = 5_000.0    # ₹5,000 collateral per trade → ₹25,
                                       # → up to 8 concurrent positions
 MCX_TAKER_FEE_PCT        = 0.0005     # 0.05% per side (broker brokerage)
 MCX_SLIPPAGE_PCT         = 0.0005     # 0.05% adverse fill per side
+YF_REQUEST_DELAY         = 0.25       # seconds between yfinance fetches (rate-limit safety)
 
 # ─── Strategy parameters ───────────────────────────────────────────────────
 ORB_OPEN       = dtime(9, 15)    # first candle starts
@@ -73,12 +90,12 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-logger = logging.getLogger("mcx-orb")
+logger = logging.getLogger("indian-orb")
 
 
 class MCXBot:
     def __init__(self, symbols=None, on_event=None, send_telegram=True):
-        self.symbols     = symbols or MCX_SYMBOLS
+        self.symbols     = symbols or NSE_FNO_SYMBOLS
         self.orb         : dict[str, dict] = {}    # sym -> ORB dict
         self.positions   : dict[str, dict] = {}    # sym -> open paper trade
         self.history     : list[dict]      = []
@@ -111,6 +128,9 @@ class MCXBot:
     # ─────────────────────────────────────────────────────────── data
     def _fetch_5m(self, symbol: str):
         """Fetch today's 5-min OHLC for a symbol. Returns DataFrame or None."""
+        # Gentle pacing to avoid yfinance rate-limits on big symbol lists
+        if YF_REQUEST_DELAY > 0:
+            time.sleep(YF_REQUEST_DELAY)
         try:
             df = yf.download(symbol, period="1d", interval="5m",
                              progress=False, auto_adjust=False, threads=False)
@@ -388,7 +408,7 @@ class MCXBot:
                 "orb_high":     orb["high"],
                 "orb_low":      orb["low"],
                 "regime":       "ORB",
-                "strategy":     "MCX-ORB",
+                "strategy":     "Indian-ORB",
                 "timeframe":    "5m IST",
                 "time":         int(sig["ts"].timestamp()),
                 "leverage":     MCX_LEVERAGE,
@@ -401,7 +421,7 @@ class MCXBot:
 
     # ─────────────────────────────────────────────────────────── main loop
     def run(self):
-        logger.info("MCX-ORB bot starting. Symbols: %s", ", ".join(self.symbols))
+        logger.info("Indian-ORB bot starting on %d NSE F&O symbols.", len(self.symbols))
         logger.info("ORB window: %s–%s IST.  Market close: %s.  R:R = 1:%.0f",
                     ORB_OPEN.strftime("%H:%M"), ORB_CLOSE.strftime("%H:%M"),
                     MARKET_CLOSE.strftime("%H:%M"), RR_RATIO)

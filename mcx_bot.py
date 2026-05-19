@@ -269,6 +269,47 @@ class MCXBot:
         closed = wins + losses + timeouts
         realized = sum(t.get("pnl_inr", 0) or 0 for t in closed)
         wr = (len(wins) / len(closed) * 100) if closed else 0.0
+
+        # Per-symbol status — useful filter for the dashboard
+        today_closed = {t.get("symbol"): t for t in self.history
+                        if t.get("entry_time") and getattr(t.get("entry_time"), "date", None)
+                        and t["entry_time"].date().isoformat() == self._day}
+        # Some histories may not have datetime objects — fall back by exit_time string
+        stocks = []
+        for sym in self.symbols:
+            took_long  = (sym, "LONG")  in self.trades_today
+            took_short = (sym, "SHORT") in self.trades_today
+            took = took_long or took_short
+            side = "LONG" if took_long else "SHORT" if took_short else None
+            orb  = self.orb.get(sym)
+            open_pos = self.positions.get(sym)
+            closed_t = today_closed.get(sym)
+
+            if open_pos:
+                status, status_color = "OPEN", "yellow"
+            elif closed_t:
+                st = closed_t.get("status", "?")
+                status = st
+                status_color = "green" if st == "WIN" else "red" if st == "LOSS" else "muted"
+            elif took:
+                status, status_color = "TAKEN", "muted"
+            elif orb:
+                status, status_color = "WAITING", "muted"
+            else:
+                status, status_color = "PRE-ORB", "muted"
+
+            stocks.append({
+                "symbol":     sym,
+                "took_trade": took,
+                "side":       side,
+                "status":     status,
+                "status_color": status_color,
+                "orb_high":   orb["high"] if orb else None,
+                "orb_low":    orb["low"]  if orb else None,
+                "pnl_inr":    closed_t.get("pnl_inr") if closed_t else None,
+                "exit_reason": closed_t.get("exit_reason") if closed_t else None,
+                "open":       open_pos is not None,
+            })
         return {
             "running":        self._running,
             "symbols":        list(self.symbols),
@@ -277,6 +318,7 @@ class MCXBot:
             "open_positions": [self._serialize(t) for t in self.positions.values()],
             "history":        [self._serialize(t) for t in self.history[-50:]],
             "today":          self._day,
+            "stocks":         stocks,
             "account": {
                 "starting_balance_inr": MCX_STARTING_BALANCE_INR,
                 "balance_inr":          round(self.balance_inr, 2),

@@ -606,6 +606,32 @@
     transition: all 0.15s ease;
   }
   .scr-sort-btn:hover { color: var(--text-dim); border-color: var(--primary); }
+
+  /* Indian-ORB symbol filter pills */
+  .mcx-fb {
+    background: transparent; border: 1px solid var(--border2); color: var(--muted);
+    padding: 4px 10px; font: inherit; font-size: 10px; letter-spacing: 0.8px;
+    cursor: pointer; border-radius: 6px; font-weight: 600;
+    text-transform: uppercase; transition: all 0.15s ease;
+  }
+  .mcx-fb:hover { color: var(--text-dim); border-color: var(--primary); }
+  .mcx-fb.active {
+    background: var(--primary); color: #000; border-color: var(--primary);
+    box-shadow: 0 0 10px rgba(167,139,250,0.35);
+  }
+  .mcx-fb .cnt { color: inherit; opacity: 0.6; font-size: 9px; margin-left: 3px; }
+  .mcx-status-chip {
+    display: inline-block; padding: 2px 8px; border-radius: 8px;
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.6px;
+    text-transform: uppercase; font-family: var(--font-ui);
+  }
+  .mcx-status-chip.OPEN     { color: var(--yellow); background: rgba(251,191,36,0.12); }
+  .mcx-status-chip.WIN      { color: var(--green);  background: rgba(45,212,191,0.12); }
+  .mcx-status-chip.LOSS     { color: var(--red);    background: rgba(248,113,113,0.12); }
+  .mcx-status-chip.TIMEOUT  { color: var(--muted);  background: rgba(255,255,255,0.04); }
+  .mcx-status-chip.TAKEN    { color: var(--muted);  background: rgba(255,255,255,0.04); }
+  .mcx-status-chip.WAITING  { color: var(--cyan);   background: rgba(56,189,248,0.10); }
+  .mcx-status-chip.PRE-ORB  { color: var(--muted);  background: rgba(255,255,255,0.03); }
   .scr-sort-btn.active {
     background: var(--primary); color: #000; border-color: var(--primary);
     box-shadow: 0 0 10px rgba(167,139,250,0.35);
@@ -1023,7 +1049,27 @@
             <div style="color:var(--muted);">Waiting for 09:20 IST candle…</div>
           </div>
         </div>
-        <div style="padding:6px 14px 4px;font-size:10px;color:var(--muted);letter-spacing:1.2px;">OPEN POSITIONS</div>
+        <div style="padding:8px 14px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <div style="font-size:10px;color:var(--muted);letter-spacing:1.2px;">SYMBOL STATUS</div>
+          <div style="display:flex;gap:4px;margin-left:auto;" id="mcx-filter-bar">
+            <button class="mcx-fb active" data-mf="ALL">All <span class="cnt"></span></button>
+            <button class="mcx-fb" data-mf="OPEN">Open <span class="cnt"></span></button>
+            <button class="mcx-fb" data-mf="WIN">Won <span class="cnt"></span></button>
+            <button class="mcx-fb" data-mf="LOSS">Lost <span class="cnt"></span></button>
+            <button class="mcx-fb" data-mf="WAITING">Waiting <span class="cnt"></span></button>
+            <button class="mcx-fb" data-mf="PRE-ORB">Pre-ORB <span class="cnt"></span></button>
+            <button class="mcx-fb" data-mf="NO-TRADE">Untraded <span class="cnt"></span></button>
+          </div>
+        </div>
+        <table id="mcx-stocks-table" style="margin-top:6px;">
+          <thead><tr>
+            <th>Symbol</th><th>Status</th><th>Side</th><th>ORB Range</th>
+            <th>P&L ₹</th><th>Reason</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+
+        <div style="padding:10px 14px 4px;font-size:10px;color:var(--muted);letter-spacing:1.2px;">OPEN POSITIONS</div>
         <table id="mcx-open-table">
           <thead><tr><th>Symbol</th><th>Side</th><th>Entry</th><th>SL</th><th>TP</th>
             <th>Qty</th><th>Margin</th><th>Notional</th><th>ORB Range</th><th>Time</th></tr></thead>
@@ -1400,14 +1446,76 @@ async function refreshDashScreener() {
   renderScrTop(d);
 }
 
+let _mcxFilter = 'ALL';
+document.addEventListener('click', e => {
+  if (!e.target.classList.contains('mcx-fb')) return;
+  document.querySelectorAll('.mcx-fb').forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+  _mcxFilter = e.target.dataset.mf;
+  if (window._mcxCache) renderMcxStocks(window._mcxCache);
+});
+
+function renderMcxStocks(d) {
+  const fmtINR = v => (v == null) ? '—' : '₹' + (+v).toLocaleString('en-IN', {minimumFractionDigits:2,maximumFractionDigits:2});
+  let stocks = (d.stocks || []).slice();
+  // Counts per filter
+  const counts = {
+    ALL: stocks.length,
+    OPEN: 0, WIN: 0, LOSS: 0, WAITING: 0, 'PRE-ORB': 0, 'NO-TRADE': 0,
+  };
+  stocks.forEach(s => {
+    if (s.status === 'OPEN') counts.OPEN++;
+    else if (s.status === 'WIN') counts.WIN++;
+    else if (s.status === 'LOSS') counts.LOSS++;
+    else if (s.status === 'WAITING') counts.WAITING++;
+    else if (s.status === 'PRE-ORB') counts['PRE-ORB']++;
+    if (!s.took_trade && !s.open) counts['NO-TRADE']++;
+  });
+  document.querySelectorAll('.mcx-fb').forEach(b => {
+    const f = b.dataset.mf;
+    const span = b.querySelector('.cnt');
+    if (span) span.textContent = '(' + (counts[f] || 0) + ')';
+  });
+
+  if (_mcxFilter === 'NO-TRADE') {
+    stocks = stocks.filter(s => !s.took_trade && !s.open);
+  } else if (_mcxFilter !== 'ALL') {
+    stocks = stocks.filter(s => s.status === _mcxFilter);
+  }
+  // Sort: open > taken > waiting > pre-orb, then by symbol
+  const order = {OPEN:0, WIN:1, LOSS:1, TIMEOUT:1, TAKEN:2, WAITING:3, 'PRE-ORB':4};
+  stocks.sort((a,b) => (order[a.status]||9) - (order[b.status]||9) || a.symbol.localeCompare(b.symbol));
+
+  const tbody = $('mcx-stocks-table').querySelector('tbody');
+  if (!stocks.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:14px;">No symbols match this filter</td></tr>';
+    return;
+  }
+  tbody.innerHTML = stocks.map(s => {
+    const orb = (s.orb_high && s.orb_low) ? `${(+s.orb_low).toFixed(2)} – ${(+s.orb_high).toFixed(2)}` : '—';
+    const pnlCls = (s.pnl_inr > 0) ? 'pos' : (s.pnl_inr < 0) ? 'neg' : 'neutral';
+    const sidePill = s.side ? `<span class="pill ${s.side}">${s.side}</span>` : '<span style="color:var(--muted);">—</span>';
+    return `<tr>
+      <td><b>${s.symbol.replace('.NS','')}</b></td>
+      <td><span class="mcx-status-chip ${s.status}">${s.status}</span></td>
+      <td>${sidePill}</td>
+      <td style="color:var(--muted);">${orb}</td>
+      <td class="${pnlCls}">${s.pnl_inr != null ? fmtINR(s.pnl_inr) : '—'}</td>
+      <td style="color:var(--muted);font-size:10px;">${s.exit_reason || (s.open ? 'open' : '—')}</td>
+    </tr>`;
+  }).join('');
+}
+
 async function refreshMCX() {
   const r = await fetch('/api/mcx'); const d = await r.json();
   if (!d.available) {
     $('mcx-status').textContent = 'Unavailable (install yfinance + pytz)';
     return;
   }
+  window._mcxCache = d;
   $('mcx-status').textContent = (d.running ? '● RUNNING' : '○ IDLE') + ' · ' + (d.symbols||[]).length + ' symbols';
   $('mcx-status').style.color = d.running ? 'var(--green)' : 'var(--muted)';
+  renderMcxStocks(d);
 
   // Account
   const acct = d.account || {};

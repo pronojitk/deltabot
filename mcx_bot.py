@@ -77,11 +77,21 @@ YF_REQUEST_DELAY         = 0.25       # seconds between yfinance fetches (rate-l
 
 # ─── Strategy parameters ───────────────────────────────────────────────────
 ORB_OPEN       = dtime(9, 15)    # first candle starts
-ORB_CLOSE      = dtime(9, 20)    # first 5-min candle closes here → ORB defined
+ORB_CLOSE      = dtime(9, 30)    # ORB candle = 09:15–09:30 (15 min — wider, fewer noise stops)
 MARKET_CLOSE   = dtime(15, 30)   # NSE close
 EOD_FLAT_TIME  = dtime(15, 25)   # auto-flat any open paper trade here
-RR_RATIO       = 2.0             # target = entry + 2 × risk  (1:2)
 SCAN_INTERVAL  = 60              # seconds between yfinance polls
+
+# Quality filters
+MIN_ORB_RANGE_PCT  = 0.004       # skip if ORB range < 0.4% of price (range too tight)
+BREAKOUT_BUFFER_PCT = 0.001      # require close beyond ORB high/low by 0.1% (no wick fakes)
+
+# Exit logic
+USE_TRAILING_STOP  = True        # ATR-style trail instead of fixed TP
+TRAIL_MULT_OF_ORB  = 1.0         # trail distance = ORB_range × this
+BREAKEVEN_AT_R     = 1.0         # move SL → entry once unrealised >= 1R profit
+RR_RATIO           = 1.0         # fallback fixed TP if trailing disabled (1:1)
+
 # Per symbol per day: max 1 trade total (whichever side fires first wins;
 # no re-entry the same day even if the opposite side breaks out later).
 
@@ -179,41 +189,76 @@ class MCXBot:
 
     # ─────────────────────────────────────────────────────────── signal
     def _check_signal(self, df, orb, today):
-        """After the ORB candle, return first {side, entry, sl, tp, ts} where
-        a 5-min candle CLOSES beyond the ORB range. None if no breakout yet."""
+        """After the ORB candle closes, return first {side, entry, sl, tp, ts} where
+        a 5-min candle CLOSES beyond the ORB range by the confirmation buffer.
+        None if no breakout yet OR if the ORB is too tight."""
+        # Quality gate: skip symbols with a too-tight ORB range
+        mid = (orb["high"] + orb["low"]) / 2.0
+        rng = orb["high"] - orb["low"]
+        if mid > 0 and (rng / mid) < MIN_ORB_RANGE_PCT:
+            return None
+
         df_today = df[df.index.date == today]
-        # Skip candles up to and including the ORB candle (09:15–09:20 → close at 09:20)
         post = df_today[df_today.index > orb["ts"]]
+        up_trigger   = orb["high"] * (1.0 + BREAKOUT_BUFFER_PCT)
+        down_trigger = orb["low"]  * (1.0 - BREAKOUT_BUFFER_PCT)
         for ts, row in post.iterrows():
             close = float(row["Close"])
-            if close > orb["high"]:
+            if close > up_trigger:
                 entry = close
                 sl    = orb["low"]
                 risk  = entry - sl
                 tp    = entry + RR_RATIO * risk
-                return {"side":"LONG", "entry":entry, "sl":sl, "tp":tp, "ts":ts, "risk":risk}
-            if close < orb["low"]:
+                return {"side":"LONG", "entry":entry, "sl":sl, "tp":tp, "ts":ts,
+                        "risk":risk, "orb_range":rng}
+            if close < down_trigger:
                 entry = close
                 sl    = orb["high"]
                 risk  = sl - entry
                 tp    = entry - RR_RATIO * risk
-                return {"side":"SHORT", "entry":entry, "sl":sl, "tp":tp, "ts":ts, "risk":risk}
+                return {"side":"SHORT", "entry":entry, "sl":sl, "tp":tp, "ts":ts,
+                        "risk":risk, "orb_range":rng}
         return None
 
     # ─────────────────────────────────────────────────────────── trade mgmt
     def _check_open_trade(self, symbol, df, now):
-        """Check SL/TP/EOD on any open paper trade for this symbol."""
+        """Check SL/TP/EOD on any open paper trade for this symbol.
+        With trailing stop: ratchet SL using high-water + ORB-range trail,
+        and move SL to entry (BE) once unrealised P&L >= BREAKEVEN_AT_R."""
         if symbol not in self.positions:
             return
         t = self.positions[symbol]
         last = float(df.iloc[-1]["Close"])
+
+        # ── Update high-water mark + apply trailing logic ──
+        if USE_TRAILING_STOP and t.get("risk", 0) > 0:
+            hw = t.get("high_water", t["entry"])
+            risk = t["risk"]
+            trail_dist = t.get("orb_range", risk) * TRAIL_MULT_OF_ORB
+            if t["side"] == "LONG":
+                if last > hw: hw = last; t["high_water"] = hw
+                # Breakeven gate
+                if not t.get("be_moved") and (hw - t["entry"]) >= BREAKEVEN_AT_R * risk:
+                    t["sl"] = max(t["sl"], t["entry"]); t["be_moved"] = True
+                # Trailing ratchet (only after BE has been set so we don't loosen the initial stop)
+                if t.get("be_moved"):
+                    trail_sl = hw - trail_dist
+                    if trail_sl > t["sl"]: t["sl"] = trail_sl
+            else:   # SHORT
+                if last < hw: hw = last; t["high_water"] = hw
+                if not t.get("be_moved") and (t["entry"] - hw) >= BREAKEVEN_AT_R * risk:
+                    t["sl"] = min(t["sl"], t["entry"]); t["be_moved"] = True
+                if t.get("be_moved"):
+                    trail_sl = hw + trail_dist
+                    if trail_sl < t["sl"]: t["sl"] = trail_sl
+
         hit = None
         if t["side"] == "LONG":
-            if last <= t["sl"]: hit = ("SL", t["sl"])
-            elif last >= t["tp"]: hit = ("TP", t["tp"])
+            if last <= t["sl"]: hit = ("SL" if not t.get("be_moved") else "TRAIL", t["sl"])
+            elif (not USE_TRAILING_STOP) and last >= t["tp"]: hit = ("TP", t["tp"])
         else:
-            if last >= t["sl"]: hit = ("SL", t["sl"])
-            elif last <= t["tp"]: hit = ("TP", t["tp"])
+            if last >= t["sl"]: hit = ("SL" if not t.get("be_moved") else "TRAIL", t["sl"])
+            elif (not USE_TRAILING_STOP) and last <= t["tp"]: hit = ("TP", t["tp"])
         if not hit and now.time() >= EOD_FLAT_TIME:
             hit = ("EOD", last)
         if hit:
@@ -242,7 +287,13 @@ class MCXBot:
                 "pnl_pct": round(pnl_pct_margin, 4),    # return on margin (leveraged)
                 "pnl_price_pct": round(pnl_pct_price, 4),
                 "balance_after_inr": round(self.balance_inr, 2),
-                "status": "WIN" if reason == "TP" else "LOSS" if reason == "SL" else "TIMEOUT",
+                # WIN if hit TP (fixed) or a trailing SL that ratcheted above entry;
+                # LOSS if initial SL hit before BE moved.
+                "status": (
+                    "WIN"  if reason in ("TP", "TRAIL") else
+                    "LOSS" if reason == "SL"           else
+                    "TIMEOUT"
+                ),
             })
             logger.info(
                 "CLOSE %s %s @ %.2f reason=%s P&L=₹%.2f (%.2f%% on margin) | bal=₹%.2f",
@@ -415,6 +466,10 @@ class MCXBot:
             "notional_inr": round(notional, 2),
             "qty":          round(qty, 4),
             "status":       "OPEN",
+            # Trailing-stop state
+            "high_water":   round(entry_fill, 4),
+            "be_moved":     False,
+            "orb_range":    sig.get("orb_range", 0),
         }
         if margin <= 0:
             logger.warning("Insufficient INR balance for new MCX trade on %s", symbol)

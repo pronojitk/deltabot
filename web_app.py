@@ -53,6 +53,8 @@ class AppState:
         self.symbols: list[str] = []
         self.scan_status: str = "idle"
         self.last_scan: dict = {}
+        self.regime_btc_24h: float = 0.0
+        self.regime_skipped_last: int = 0
         self.lock = Lock()
 
     def on_mcx_event(self, event: dict) -> None:
@@ -126,6 +128,10 @@ class AppState:
 
             elif t == "error":
                 self.log("ERROR", f"{event.get('symbol')}: {event.get('error')}")
+
+            elif t == "regime":
+                self.regime_btc_24h = event.get("btc_24h_pct", 0.0)
+                self.regime_skipped_last = event.get("skipped", 0)
 
             elif t == "fatal":
                 self.log("FATAL", str(event.get("error")))
@@ -260,6 +266,10 @@ def api_state():
             "stats":         state.tester.get_stats(),
             "open_trades":   state.tester.get_open_trades(),
             "last_scan":     state.last_scan,
+            "regime": {
+                "btc_24h_pct":   round(state.regime_btc_24h, 3),
+                "skipped_last":  state.regime_skipped_last,
+            },
         })
 
 

@@ -14,7 +14,10 @@ import threading
 from datetime import datetime, timezone
 from typing import Callable
 
-from config import TIMEFRAME, CANDLE_LIMIT, SCAN_INTERVAL, ALERT_COOLDOWN, STRATEGY_NAME, get_params
+from config import (
+    TIMEFRAME, CANDLE_LIMIT, SCAN_INTERVAL, ALERT_COOLDOWN, STRATEGY_NAME, get_params,
+    REGIME_FILTER_ENABLED, REGIME_LONG_MIN_BTC_24H, REGIME_SHORT_MAX_BTC_24H,
+)
 from delta_client import get_perpetual_contracts, get_ohlcv
 from indicators import detect_signals, detect_signals_for_symbol
 from telegram_alert import send_alert, send_startup_message
@@ -205,9 +208,26 @@ class BotEngine:
         }
         return signals, price, last["time"], diag
 
+    def _market_regime_btc_24h(self) -> float:
+        """24h % change of BTC — used as the crypto market regime proxy."""
+        try:
+            candles = get_ohlcv("BTCUSD", "15m", 100) or []
+            if len(candles) < 50: return 0.0
+            win = candles[-96:]
+            ref = win[0]["close"]
+            now = win[-1]["close"]
+            return (now - ref) / ref * 100.0 if ref else 0.0
+        except Exception as e:
+            logger.warning("Regime check failed: %s", e)
+            return 0.0
+
     def _scan_cycle(self) -> tuple[int, int, int]:
         """Run one full scan. Returns (signals_found, alerts_sent, trades_closed)."""
         sig_count = alert_count = closed_count = 0
+
+        # Compute market regime ONCE per scan and cache for all signals
+        self.btc_24h_pct = self._market_regime_btc_24h() if REGIME_FILTER_ENABLED else 0.0
+        regime_skipped = 0
 
         for symbol in self.symbols:
             if not self._running:
@@ -234,8 +254,22 @@ class BotEngine:
                     sig_count += 1
                     self._emit("signal", symbol=symbol, signal=sig)
 
-                    # Open virtual trade if not already in one for this symbol+side
                     side = "LONG" if sig["type"] == "BREAKOUT" else "SHORT"
+
+                    # Regime filter — gate LONG/SHORT by BTC 24h %
+                    if REGIME_FILTER_ENABLED:
+                        if side == "LONG" and self.btc_24h_pct < REGIME_LONG_MIN_BTC_24H:
+                            regime_skipped += 1
+                            logger.info("Regime skip LONG %s (BTC 24h %.2f%% < %.2f%%)",
+                                        symbol, self.btc_24h_pct, REGIME_LONG_MIN_BTC_24H)
+                            continue
+                        if side == "SHORT" and self.btc_24h_pct > REGIME_SHORT_MAX_BTC_24H:
+                            regime_skipped += 1
+                            logger.info("Regime skip SHORT %s (BTC 24h %.2f%% > %.2f%%)",
+                                        symbol, self.btc_24h_pct, REGIME_SHORT_MAX_BTC_24H)
+                            continue
+
+                    # Open virtual trade if not already in one for this symbol+side
                     if not self.forward_tester.has_open_trade(symbol, side):
                         contract_value = self.contract_info.get(symbol, {}).get("contract_value", 1.0)
                         trade = self.forward_tester.open_trade(symbol, sig, contract_value=contract_value)
@@ -262,6 +296,10 @@ class BotEngine:
                 logger.error("Error scanning %s: %s", symbol, e)
                 self._emit("error", symbol=symbol, error=str(e))
 
+        if REGIME_FILTER_ENABLED and regime_skipped:
+            logger.info("Regime filter: BTC 24h=%.2f%% — skipped %d signal(s)",
+                        self.btc_24h_pct, regime_skipped)
+        self._emit("regime", btc_24h_pct=round(self.btc_24h_pct, 3), skipped=regime_skipped)
         return sig_count, alert_count, closed_count
 
     # ----------------------------------------------------------- main loop

@@ -38,7 +38,17 @@ MIN_LISTING_AGE_DAYS  = 30       # skip newly listed contracts (whippy / unprove
 SKIP_SYMBOLS          = [
     "FFUSD",       # consistent whipsaw losses
     "RIVERUSD",    # same pattern
+    "SIRENUSD",    # 18 trades / -$215
+    "1000SATSUSD", # 30 trades / -$180
+    "NEARUSD",     # 30 trades / -$116
 ]
+
+# ─── Regime filter (gate LONG / SHORT entries by broad-market BTC bias) ────
+# Donchian's LONG side keeps losing in bear weeks; the SHORT side prints money.
+# We use BTC's 24h % change as the proxy for crypto market regime.
+REGIME_FILTER_ENABLED   = True
+REGIME_LONG_MIN_BTC_24H  = -1.0    # skip LONG entries if BTC 24h % < this
+REGIME_SHORT_MAX_BTC_24H = 1.0     # skip SHORT entries if BTC 24h % > this
 # Always include these majors, even when their turnover field is null on Delta India.
 FORCE_INCLUDE_SYMBOLS = [
     "BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD", "BNBUSD", "DOGEUSD",

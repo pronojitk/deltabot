@@ -20,10 +20,13 @@ Run:  py mcx_bot.py
 """
 
 import os
+import json
+import sqlite3
 import time
 import logging
 import threading
 from datetime import datetime, time as dtime, timezone, timedelta
+from pathlib import Path
 
 try:
     import yfinance as yf
@@ -102,14 +105,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger("indian-orb")
 
+# Database file (shared with ForwardTester via separate tables)
+DB_FILE = Path(__file__).parent / "ft_state.db"
+
 
 class MCXBot:
     def __init__(self, symbols=None, on_event=None, send_telegram=True):
         self.symbols     = symbols or NSE_FNO_SYMBOLS
-        self.orb         : dict[str, dict] = {}    # sym -> ORB dict
-        self.positions   : dict[str, dict] = {}    # sym -> open paper trade
+        self.orb         : dict[str, dict] = {}
+        self.positions   : dict[str, dict] = {}
         self.history     : list[dict]      = []
-        self.trades_today : set[tuple]     = set()   # {(sym, side), ...} taken today
+        self.trades_today : set[tuple]     = set()
+        self.last_prices : dict[str, float] = {}      # NEW: for live P&L
         self._day        : str | None      = None
         self.on_event    = on_event or (lambda e: None)
         self.send_telegram = send_telegram
@@ -117,6 +124,120 @@ class MCXBot:
         self._thread     : threading.Thread | None = None
         # ── Account ──
         self.balance_inr : float = MCX_STARTING_BALANCE_INR
+        # ── SQLite persistence ──
+        self.db = sqlite3.connect(DB_FILE, check_same_thread=False, isolation_level=None)
+        self.db.row_factory = sqlite3.Row
+        self._init_schema()
+        self._load_state()
+
+    # ─────────────────────────────────────────────────────── persistence
+    _CORE_COLS = [
+        "id", "symbol", "side", "status",
+        "entry", "entry_time_ts", "sl", "tp", "risk", "rr", "orb_range",
+        "orb_high", "orb_low",
+        "leverage", "margin_inr", "notional_inr", "qty",
+        "exit_price", "exit_time_ts", "exit_reason",
+        "pnl_inr", "pnl_pct", "pnl_price_pct", "fees_inr", "balance_after_inr",
+        "be_moved", "high_water",
+    ]
+
+    def _init_schema(self):
+        cur = self.db.cursor()
+        cols = ",\n  ".join([
+            "id INTEGER PRIMARY KEY",
+            "symbol TEXT", "side TEXT", "status TEXT",
+            "entry REAL", "entry_time_ts INTEGER",
+            "sl REAL", "tp REAL", "risk REAL", "rr REAL", "orb_range REAL",
+            "orb_high REAL", "orb_low REAL",
+            "leverage REAL", "margin_inr REAL", "notional_inr REAL", "qty REAL",
+            "exit_price REAL", "exit_time_ts INTEGER", "exit_reason TEXT",
+            "pnl_inr REAL", "pnl_pct REAL", "pnl_price_pct REAL",
+            "fees_inr REAL", "balance_after_inr REAL",
+            "be_moved INTEGER", "high_water REAL",
+            "extras_json TEXT",
+        ])
+        cur.execute(f"CREATE TABLE IF NOT EXISTS indian_orb_trades (\n  {cols}\n)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_iorb_status ON indian_orb_trades(status)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_iorb_symbol ON indian_orb_trades(symbol)")
+        cur.execute("""CREATE TABLE IF NOT EXISTS indian_orb_account (
+                         key TEXT PRIMARY KEY, value REAL
+                       )""")
+
+    def _to_ts(self, v):
+        """Convert datetime / pandas Timestamp / int → unix seconds (or None)."""
+        if v is None: return None
+        if isinstance(v, (int, float)): return int(v)
+        if hasattr(v, "timestamp"):
+            try: return int(v.timestamp())
+            except Exception: return None
+        return None
+
+    def _from_ts(self, ts):
+        if ts is None: return None
+        try:    return datetime.fromtimestamp(int(ts), tz=IST)
+        except Exception: return None
+
+    def _row_to_trade(self, row: sqlite3.Row) -> dict:
+        t = {k: row[k] for k in row.keys() if k != "extras_json"}
+        t["be_moved"]    = bool(t.get("be_moved"))
+        t["entry_time"]  = self._from_ts(t.pop("entry_time_ts", None))
+        t["exit_time"]   = self._from_ts(t.pop("exit_time_ts",  None))
+        if row["extras_json"]:
+            try: t.update(json.loads(row["extras_json"]))
+            except Exception: pass
+        return t
+
+    def _trade_to_row(self, t: dict) -> dict:
+        core_keys = set(self._CORE_COLS) | {"entry_time", "exit_time"}
+        core = {k: t.get(k) for k in self._CORE_COLS}
+        # Translate datetime fields → unix
+        core["entry_time_ts"] = self._to_ts(t.get("entry_time"))
+        core["exit_time_ts"]  = self._to_ts(t.get("exit_time"))
+        core["be_moved"]      = 1 if t.get("be_moved") else 0
+        extras = {k: v for k, v in t.items() if k not in core_keys}
+        # Drop non-serialisable
+        clean = {}
+        for k, v in extras.items():
+            try: json.dumps(v); clean[k] = v
+            except Exception:
+                if hasattr(v, "isoformat"):
+                    try: clean[k] = v.isoformat()
+                    except Exception: pass
+        return core, clean
+
+    def _save_trade(self, t: dict):
+        if "id" not in t or t["id"] is None:
+            t["id"] = int(time.time() * 1000)
+        core, extras = self._trade_to_row(t)
+        cols = ",".join(self._CORE_COLS) + ",extras_json"
+        ph   = ",".join("?" for _ in self._CORE_COLS) + ",?"
+        vals = [core.get(k) for k in self._CORE_COLS] + [json.dumps(extras)]
+        self.db.execute(f"INSERT OR REPLACE INTO indian_orb_trades({cols}) VALUES ({ph})", vals)
+
+    def _save_balance(self):
+        self.db.execute(
+            "INSERT OR REPLACE INTO indian_orb_account(key,value) VALUES ('balance_inr',?)",
+            (float(self.balance_inr),))
+
+    def _load_state(self):
+        cur = self.db.cursor()
+        # Open positions → self.positions
+        for row in cur.execute("SELECT * FROM indian_orb_trades WHERE status='OPEN'"):
+            t = self._row_to_trade(row)
+            self.positions[t["symbol"]] = t
+            self.trades_today.add((t["symbol"], t["side"]))
+        # Closed trades → history (last 200)
+        for row in cur.execute(
+            "SELECT * FROM indian_orb_trades WHERE status!='OPEN' "
+            "ORDER BY exit_time_ts DESC LIMIT 200"):
+            self.history.append(self._row_to_trade(row))
+        self.history.reverse()
+        # Balance
+        r = cur.execute("SELECT value FROM indian_orb_account WHERE key='balance_inr'").fetchone()
+        if r: self.balance_inr = float(r[0])
+        if self.positions or self.history:
+            logger.info("Indian-ORB restored: %d open, %d historical, balance ₹%.2f",
+                        len(self.positions), len(self.history), self.balance_inr)
 
     # ──────────────────────────────────────────────────── lifecycle
     def start(self) -> None:
@@ -229,6 +350,9 @@ class MCXBot:
             return
         t = self.positions[symbol]
         last = float(df.iloc[-1]["Close"])
+        self.last_prices[symbol] = last     # for live P&L
+
+        sl_before = t["sl"]; be_before = bool(t.get("be_moved"))
 
         # ── Update high-water mark + apply trailing logic ──
         if USE_TRAILING_STOP and t.get("risk", 0) > 0:
@@ -261,6 +385,10 @@ class MCXBot:
             elif (not USE_TRAILING_STOP) and last <= t["tp"]: hit = ("TP", t["tp"])
         if not hit and now.time() >= EOD_FLAT_TIME:
             hit = ("EOD", last)
+
+        # If SL or BE flag changed (trail moved) and we're NOT exiting now, persist it.
+        if not hit and (t["sl"] != sl_before or bool(t.get("be_moved")) != be_before):
+            self._save_trade(t)
         if hit:
             reason, exit_price = hit
             # Apply exit slippage (longs exit BELOW, shorts exit ABOVE)
@@ -301,6 +429,7 @@ class MCXBot:
             )
             self.history.append(dict(t))
             self.positions.pop(symbol, None)
+            self._save_trade(t); self._save_balance()
             self._emit("mcx_closed", trade=dict(t))
 
     # ─────────────────────────────────────────────────────────── scan
@@ -312,6 +441,30 @@ class MCXBot:
             self.trades_today.clear()
             logger.info("=== New trading day: %s ===", today_str)
 
+    def _enrich_open(self, t: dict) -> dict:
+        """Add live current_price + unrealised P&L to an open position."""
+        out = dict(t)
+        sym = t.get("symbol")
+        last = self.last_prices.get(sym)
+        if last is None:
+            out["current_price"]   = None
+            out["pnl_live_inr"]    = None
+            out["pnl_pct_live"]    = None
+            return out
+        entry = float(t.get("entry") or 0)
+        notional = float(t.get("notional_inr") or 0)
+        margin   = float(t.get("margin_inr") or 0)
+        if not entry:
+            out["current_price"] = round(last, 2)
+            return out
+        move = (last - entry) / entry if t.get("side") == "LONG" else (entry - last) / entry
+        # Gross only — fees deducted on exit
+        pnl = notional * move
+        out["current_price"] = round(last, 4)
+        out["pnl_live_inr"]  = round(pnl, 2)
+        out["pnl_pct_live"]  = round((pnl / margin * 100) if margin else 0.0, 2)
+        return out
+
     def get_state(self) -> dict:
         """Snapshot for the web UI."""
         wins   = [t for t in self.history if t.get("status") == "WIN"]
@@ -320,6 +473,12 @@ class MCXBot:
         closed = wins + losses + timeouts
         realized = sum(t.get("pnl_inr", 0) or 0 for t in closed)
         wr = (len(wins) / len(closed) * 100) if closed else 0.0
+        # Live unrealised P&L across all OPEN positions
+        unreal = 0.0
+        for t in self.positions.values():
+            enr = self._enrich_open(t)
+            if enr.get("pnl_live_inr") is not None:
+                unreal += enr["pnl_live_inr"]
 
         # Per-symbol status — useful filter for the dashboard
         today_closed = {t.get("symbol"): t for t in self.history
@@ -366,7 +525,7 @@ class MCXBot:
             "symbols":        list(self.symbols),
             "orb":            {k: {kk:(vv.isoformat() if hasattr(vv,'isoformat') else vv)
                                    for kk,vv in v.items()} for k,v in self.orb.items()},
-            "open_positions": [self._serialize(t) for t in self.positions.values()],
+            "open_positions": [self._serialize(self._enrich_open(t)) for t in self.positions.values()],
             "history":        [self._serialize(t) for t in self.history[-50:]],
             "today":          self._day,
             "stocks":         stocks,
@@ -376,6 +535,8 @@ class MCXBot:
                 "leverage":             MCX_LEVERAGE,
                 "margin_per_trade_inr": MCX_MARGIN_PER_TRADE_INR,
                 "realized_pnl_inr":     round(realized, 2),
+                "unrealized_pnl_inr":   round(unreal, 2),
+                "equity_inr":           round(self.balance_inr + unreal, 2),
                 "total_pnl_pct":        round((self.balance_inr - MCX_STARTING_BALANCE_INR) /
                                               MCX_STARTING_BALANCE_INR * 100, 2),
                 "trades":   len(self.history),
@@ -474,7 +635,9 @@ class MCXBot:
         if margin <= 0:
             logger.warning("Insufficient INR balance for new MCX trade on %s", symbol)
             return
+        trade["id"] = int(time.time() * 1000)
         self.positions[symbol] = trade
+        self._save_trade(trade); self._save_balance()
 
         logger.info(
             "SIGNAL %s %s @ %.2f SL=%.2f TP=%.2f | margin=₹%.0f notional=₹%.0f qty=%.2f (1:%.0f)",

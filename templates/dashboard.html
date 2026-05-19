@@ -1036,7 +1036,9 @@
         </div>
         <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;">
           <div><div style="font-size:9px;color:var(--muted);letter-spacing:1.2px;">BALANCE</div><div style="font-size:15px;font-weight:600;color:var(--orange2);" id="mcx-balance">—</div></div>
+          <div><div style="font-size:9px;color:var(--muted);letter-spacing:1.2px;">EQUITY (LIVE)</div><div style="font-size:15px;font-weight:600;" id="mcx-equity">—</div></div>
           <div><div style="font-size:9px;color:var(--muted);letter-spacing:1.2px;">REALIZED P&L</div><div style="font-size:15px;font-weight:600;" id="mcx-pnl">—</div></div>
+          <div><div style="font-size:9px;color:var(--muted);letter-spacing:1.2px;">UNREALIZED P&L</div><div style="font-size:15px;font-weight:600;" id="mcx-unreal">—</div></div>
           <div><div style="font-size:9px;color:var(--muted);letter-spacing:1.2px;">P&L %</div><div style="font-size:15px;font-weight:600;" id="mcx-pnl-pct">—</div></div>
           <div><div style="font-size:9px;color:var(--muted);letter-spacing:1.2px;">LEVERAGE</div><div style="font-size:15px;font-weight:600;" id="mcx-leverage">—</div></div>
           <div><div style="font-size:9px;color:var(--muted);letter-spacing:1.2px;">MARGIN/TRADE</div><div style="font-size:15px;font-weight:600;" id="mcx-margin">—</div></div>
@@ -1071,8 +1073,8 @@
 
         <div style="padding:10px 14px 4px;font-size:10px;color:var(--muted);letter-spacing:1.2px;">OPEN POSITIONS</div>
         <table id="mcx-open-table">
-          <thead><tr><th>Symbol</th><th>Side</th><th>Entry</th><th>SL</th><th>TP</th>
-            <th>Qty</th><th>Margin</th><th>Notional</th><th>ORB Range</th><th>Time</th></tr></thead>
+          <thead><tr><th>Symbol</th><th>Side</th><th>Entry</th><th>Now</th><th>SL</th><th>TP</th>
+            <th>Qty</th><th>Margin</th><th>P&L ₹</th><th>P&L %</th><th>ORB Range</th><th>Time</th></tr></thead>
           <tbody></tbody>
         </table>
         <div style="padding:6px 14px 4px;font-size:10px;color:var(--muted);letter-spacing:1.2px;">RECENT TRADES</div>
@@ -1525,6 +1527,18 @@ async function refreshMCX() {
   $('mcx-pnl').className       = '';
   $('mcx-pnl').style.color     = (acct.realized_pnl_inr || 0) > 0 ? 'var(--green)'
                                : (acct.realized_pnl_inr || 0) < 0 ? 'var(--red)' : 'var(--text)';
+  const eqEl = $('mcx-equity');
+  if (eqEl) {
+    eqEl.textContent = fmtINR(acct.equity_inr);
+    const delta = (acct.equity_inr || 0) - (acct.starting_balance_inr || 0);
+    eqEl.style.color = delta > 0 ? 'var(--green)' : delta < 0 ? 'var(--red)' : 'var(--text)';
+  }
+  const unrEl = $('mcx-unreal');
+  if (unrEl) {
+    unrEl.textContent = fmtINR(acct.unrealized_pnl_inr);
+    unrEl.style.color = (acct.unrealized_pnl_inr || 0) > 0 ? 'var(--green)'
+                      : (acct.unrealized_pnl_inr || 0) < 0 ? 'var(--red)' : 'var(--text)';
+  }
   $('mcx-pnl-pct').textContent = (acct.total_pnl_pct != null ? (acct.total_pnl_pct >= 0 ? '+' : '') + acct.total_pnl_pct.toFixed(2) + '%' : '—');
   $('mcx-pnl-pct').style.color = (acct.total_pnl_pct || 0) > 0 ? 'var(--green)'
                                : (acct.total_pnl_pct || 0) < 0 ? 'var(--red)' : 'var(--text)';
@@ -1546,19 +1560,24 @@ async function refreshMCX() {
 
   // Open positions
   const open = d.open_positions || [];
-  $('mcx-open-table').querySelector('tbody').innerHTML = open.map(t => `
-    <tr>
-      <td><b>${t.symbol}</b></td>
-      <td><span class="pill ${t.side}">${t.side}</span></td>
+  $('mcx-open-table').querySelector('tbody').innerHTML = open.map(t => {
+    const pnlCls  = t.pnl_live_inr > 0 ? 'pos' : t.pnl_live_inr < 0 ? 'neg' : 'neutral';
+    const beTag = t.be_moved ? ' <span style="color:var(--green);font-size:9px;">BE</span>' : '';
+    return `<tr>
+      <td><b>${t.symbol.replace('.NS','')}</b></td>
+      <td><span class="pill ${t.side}">${t.side}</span>${beTag}</td>
       <td>${(+t.entry).toFixed(2)}</td>
+      <td>${t.current_price != null ? (+t.current_price).toFixed(2) : '—'}</td>
       <td>${(+t.sl).toFixed(2)}</td>
-      <td>${(+t.tp).toFixed(2)}</td>
+      <td>${t.tp != null ? (+t.tp).toFixed(2) : '—'}</td>
       <td>${t.qty != null ? (+t.qty).toFixed(2) : '—'}</td>
       <td>${t.margin_inr != null ? fmtINR(t.margin_inr) : '—'}</td>
-      <td>${t.notional_inr != null ? fmtINR(t.notional_inr) : '—'}</td>
-      <td>${(+t.orb_low).toFixed(2)} – ${(+t.orb_high).toFixed(2)}</td>
+      <td class="${pnlCls}">${t.pnl_live_inr != null ? fmtINR(t.pnl_live_inr) : '—'}</td>
+      <td class="${pnlCls}">${t.pnl_pct_live != null ? (t.pnl_pct_live >= 0 ? '+' : '') + t.pnl_pct_live.toFixed(2) + '%' : '—'}</td>
+      <td style="color:var(--muted);">${(+t.orb_low).toFixed(2)} – ${(+t.orb_high).toFixed(2)}</td>
       <td style="color:var(--muted);font-size:10px;">${(t.entry_time||'').replace('T',' ').slice(5,16)}</td>
-    </tr>`).join('') || '<tr><td colspan="10" style="color:var(--muted);text-align:center;padding:14px;">No open Indian-ORB positions</td></tr>';
+    </tr>`;
+  }).join('') || '<tr><td colspan="12" style="color:var(--muted);text-align:center;padding:14px;">No open Indian-ORB positions</td></tr>';
 
   // History
   const hist = (d.history || []).slice().reverse();

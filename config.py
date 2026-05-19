@@ -35,13 +35,7 @@ MAX_SYMBOLS           = 40       # keep only the top-N perpetuals by 24h volume
 MIN_LISTING_AGE_DAYS  = 30       # skip newly listed contracts (whippy / unproven)
 # Hard blacklist: never trade these even if they make the volume cut.
 # Common reasons: thin order books, manipulative price action, repeated SL hits in backtest.
-SKIP_SYMBOLS          = [
-    "FFUSD",       # consistent whipsaw losses
-    "RIVERUSD",    # same pattern
-    "SIRENUSD",    # 18 trades / -$215
-    "1000SATSUSD", # 30 trades / -$180
-    "NEARUSD",     # 30 trades / -$116
-]
+SKIP_SYMBOLS          = []   # blacklist disabled for the month — test pure regime-filter performance
 
 # ─── Regime filter (gate LONG / SHORT entries by broad-market BTC bias) ────
 # Donchian's LONG side keeps losing in bear weeks; the SHORT side prints money.

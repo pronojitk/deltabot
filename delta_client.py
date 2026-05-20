@@ -7,6 +7,7 @@ from config import (
     DELTA_BASE_URL, REQUEST_DELAY, CANDLE_LIMIT,
     DELTA_API_KEY, DELTA_API_SECRET, DELTA_REGION,
     MAX_SYMBOLS, MIN_LISTING_AGE_DAYS, FORCE_INCLUDE_SYMBOLS, SKIP_SYMBOLS,
+    MARKOV_FILTER_ENABLED, MARKOV_MIN_SHARPE,
 )
 
 logger = logging.getLogger(__name__)
@@ -209,6 +210,31 @@ def get_perpetual_contracts() -> list[dict]:
         "Symbol filter: %d products → %d eligible (skipped %d young, %d blacklisted) → top %d by turnover + %d forced majors = %d total",
         len(products), len(eligible), skipped_young, skipped_black, len(top), len(forced), len(final),
     )
+
+    # Markov pre-screen — drop symbols with walk-forward Sharpe < threshold.
+    # If a symbol hasn't been scored yet (first boot, or new listing), keep it.
+    if MARKOV_FILTER_ENABLED:
+        try:
+            from markov import get_score
+            kept, dropped = [], []
+            for p in final:
+                s = get_score(p["symbol"])
+                if s is None or s.get("sharpe") is None:
+                    kept.append(p)
+                    continue
+                if s["sharpe"] >= MARKOV_MIN_SHARPE:
+                    kept.append(p)
+                else:
+                    dropped.append((p["symbol"], s["sharpe"]))
+            if dropped:
+                logger.info("Markov filter dropped %d symbols (Sharpe < %.2f): %s",
+                            len(dropped), MARKOV_MIN_SHARPE,
+                            ", ".join(f"{s}({sh:+.2f})" for s, sh in dropped[:8])
+                            + ("…" if len(dropped) > 8 else ""))
+            final = kept
+        except Exception as e:
+            logger.warning("Markov filter unavailable: %s", e)
+
     return final
 
 

@@ -43,6 +43,13 @@ SKIP_SYMBOLS          = []   # blacklist disabled for the month — test pure re
 REGIME_FILTER_ENABLED   = True
 REGIME_LONG_MIN_BTC_24H  = -1.0    # skip LONG entries if BTC 24h % < this
 REGIME_SHORT_MAX_BTC_24H = 1.0     # skip SHORT entries if BTC 24h % > this
+
+# ─── Markov regime pre-screen (filter the symbol universe) ────────────────
+# Builds a 3-state transition matrix per symbol from 5y of daily data and
+# computes a walk-forward Sharpe. Skip any symbol with sharpe < MARKOV_MIN_SHARPE.
+# Set MARKOV_FILTER_ENABLED = False to disable (universe stays as-is).
+MARKOV_FILTER_ENABLED = True
+MARKOV_MIN_SHARPE     = 0.0        # only trade symbols whose walk-forward Sharpe >= this
 # Always include these majors, even when their turnover field is null on Delta India.
 FORCE_INCLUDE_SYMBOLS = [
     "BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD", "BNBUSD", "DOGEUSD",

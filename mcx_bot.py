@@ -111,7 +111,30 @@ DB_FILE = Path(__file__).parent / "ft_state.db"
 
 class MCXBot:
     def __init__(self, symbols=None, on_event=None, send_telegram=True):
-        self.symbols     = symbols or NSE_FNO_SYMBOLS
+        base_symbols = symbols or NSE_FNO_SYMBOLS
+        # Markov pre-screen — keep only symbols with walk-forward Sharpe ≥ threshold.
+        # Symbols not yet scored stay in (so the bot works on first boot before refresh runs).
+        try:
+            from config import MARKOV_FILTER_ENABLED, MARKOV_MIN_SHARPE
+            if MARKOV_FILTER_ENABLED:
+                from markov import get_score
+                filtered, dropped = [], []
+                for sym in base_symbols:
+                    s = get_score(sym)
+                    if s is None or s.get("sharpe") is None:
+                        filtered.append(sym)
+                    elif s["sharpe"] >= MARKOV_MIN_SHARPE:
+                        filtered.append(sym)
+                    else:
+                        dropped.append((sym, s["sharpe"]))
+                if dropped:
+                    logger.info("Indian-ORB Markov filter dropped %d/%d: %s",
+                                len(dropped), len(base_symbols),
+                                ", ".join(f"{s}({sh:+.2f})" for s, sh in dropped[:8]))
+                base_symbols = filtered
+        except Exception as e:
+            logger.warning("Markov filter unavailable for Indian-ORB: %s", e)
+        self.symbols     = base_symbols
         self.orb         : dict[str, dict] = {}
         self.positions   : dict[str, dict] = {}
         self.history     : list[dict]      = []

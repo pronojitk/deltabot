@@ -983,6 +983,7 @@
         <div class="tab" data-sub="signals">Signals</div>
         <div class="tab" data-sub="trades">Trade History</div>
         <div class="tab" data-sub="symbol-pnl">Symbol P&L</div>
+        <div class="tab" data-sub="markov">📈 Markov</div>
         <div class="tab" data-sub="mcx">🇮🇳 Indian-ORB</div>
         <div class="tab" data-sub="logs">Log</div>
       </div>
@@ -1027,6 +1028,22 @@
           <tbody></tbody>
         </table>
       </div>
+      <div class="sub-tab-content" id="sub-markov">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
+          <span style="font-size:11px;color:var(--muted);">Walk-forward Markov regime — 5y daily data, 20-day rolling label</span>
+          <span style="font-size:11px;color:var(--muted);" id="mk-status">—</span>
+          <button class="pill-btn orange" id="mk-refresh-btn" style="margin-left:auto;">↻ Refresh</button>
+        </div>
+        <table id="markov-table">
+          <thead><tr>
+            <th>Symbol</th><th>Source</th><th>Sharpe</th><th>Max DD</th>
+            <th>Bull persist</th><th>Bear persist</th><th>Stationary Bull</th>
+            <th>Rows</th><th>Updated</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
       <div class="sub-tab-content" id="sub-mcx">
         <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:18px;align-items:center;flex-wrap:wrap;">
           <span style="font-size:11px;color:var(--muted);">Strategy: <b style="color:var(--text);">Opening Range Breakout (09:15–09:20 IST)</b></span>
@@ -1508,6 +1525,64 @@ function renderMcxStocks(d) {
   }).join('');
 }
 
+async function refreshMarkov() {
+  const r = await fetch('/api/markov'); const d = await r.json();
+  if (!d.enabled && !d.rows) { $('mk-status').textContent = 'Markov filter disabled.'; return; }
+  $('mk-status').textContent =
+    `${d.count} symbols scored · min Sharpe gate: ${(+d.min_sharpe).toFixed(2)}`;
+  const fmtTs = ts => {
+    if (!ts) return '—';
+    const d2 = new Date(+ts * 1000);
+    return d2.toLocaleString('en-IN',
+      {month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
+  };
+  const rows = (d.rows || []).slice();
+  const tbody = $('markov-table').querySelector('tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="color:var(--muted);text-align:center;padding:18px;">No scores yet — first refresh takes ~3 minutes on boot.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => {
+    const sharpe = r.sharpe == null ? '—' : (+r.sharpe).toFixed(2);
+    const dd     = r.max_dd == null ? '—' : (+r.max_dd * 100).toFixed(1) + '%';
+    const bp     = r.bull_persist == null ? '—' : (+r.bull_persist * 100).toFixed(1) + '%';
+    const brp    = r.bear_persist == null ? '—' : (+r.bear_persist * 100).toFixed(1) + '%';
+    const sb     = r.stationary_bull == null ? '—' : (+r.stationary_bull * 100).toFixed(1) + '%';
+    const sCls   = r.sharpe == null ? 'neutral'
+                  : r.sharpe >= 0.5 ? 'pos'
+                  : r.sharpe >= 0   ? 'neutral' : 'neg';
+    const sourceCls = r.source === 'delta' ? 'LONG' : 'SHORT'; // reuse pill colors
+    return `<tr>
+      <td><b>${r.symbol.replace('.NS','')}</b></td>
+      <td><span class="pill ${sourceCls}">${(r.source||'').toUpperCase()}</span></td>
+      <td class="${sCls}" style="font-weight:600;">${sharpe}</td>
+      <td class="neg">${dd}</td>
+      <td class="pos">${bp}</td>
+      <td class="neg">${brp}</td>
+      <td>${sb}</td>
+      <td style="color:var(--muted);">${r.n_rows || '—'}</td>
+      <td style="color:var(--muted);font-size:10px;">${fmtTs(r.last_updated)}</td>
+    </tr>`;
+  }).join('');
+}
+
+document.addEventListener('click', async e => {
+  if (e.target && e.target.id === 'mk-refresh-btn') {
+    e.target.disabled = true;
+    e.target.textContent = '↻ Refreshing…';
+    try {
+      const r = await fetch('/api/markov/refresh', {method:'POST'});
+      const j = await r.json();
+      if (!j.ok) alert('Refresh failed: ' + (j.error || ''));
+    } finally {
+      setTimeout(() => {
+        e.target.disabled = false;
+        e.target.textContent = '↻ Refresh';
+      }, 2000);
+    }
+  }
+});
+
 async function refreshMCX() {
   const r = await fetch('/api/mcx'); const d = await r.json();
   if (!d.available) {
@@ -1893,6 +1968,7 @@ async function refreshAll() {
     safe(refreshDashScreener, 'screener'),
     safe(refreshLiveIndicators,'live-ind'),
     safe(refreshSymbolPnL,    'sym-pnl'),
+    safe(refreshMarkov,       'markov'),
     safe(refreshMCX,          'mcx'),
     safe(refreshLogs,         'logs'),
   ]);

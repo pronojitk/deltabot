@@ -24,12 +24,27 @@ from bot import BotEngine
 from forward_test import ForwardTester
 from config import WEB_HOST, WEB_PORT
 try:
-    from mcx_bot import MCXBot
+    from mcx_bot import MCXBot, NSE_FNO_SYMBOLS
     MCX_AVAILABLE = True
 except Exception as _e:
     MCX_AVAILABLE = False
     MCXBot = None
+    NSE_FNO_SYMBOLS = []
     logging.getLogger("web").warning("Indian-ORB bot unavailable: %s", _e)
+
+# Markov pre-screen — background daily refresh of regime Sharpe per symbol
+try:
+    import markov as _markov
+    from delta_client import get_perpetual_contracts as _gpc
+    def _crypto_universe():
+        # Pull a wide list (skip the Markov-filter step itself by reading raw products)
+        # — but get_perpetual_contracts already filters. Acceptable for refresh purposes.
+        try:    return [p["symbol"] for p in _gpc()]
+        except Exception: return []
+    def _nse_universe(): return list(NSE_FNO_SYMBOLS)
+    _markov.start_background_refresh(_crypto_universe, _nse_universe)
+except Exception as _e:
+    logging.getLogger("web").warning("Markov refresh unavailable: %s", _e)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -575,6 +590,43 @@ def api_symbol_pnl():
         })
     out.sort(key=lambda r: -r["pnl"])
     return jsonify(out)
+
+
+@app.route("/api/markov")
+def api_markov():
+    """All cached Markov scores."""
+    try:
+        import markov as _m
+        from config import MARKOV_MIN_SHARPE, MARKOV_FILTER_ENABLED
+        rows = _m.get_all_scores()
+        return jsonify({
+            "enabled":    MARKOV_FILTER_ENABLED,
+            "min_sharpe": MARKOV_MIN_SHARPE,
+            "rows":       rows,
+            "count":      len(rows),
+        })
+    except Exception as e:
+        return jsonify({"enabled": False, "error": str(e), "rows": []})
+
+
+@app.route("/api/markov/refresh", methods=["POST"])
+def api_markov_refresh():
+    """Force an immediate Markov refresh (runs in a thread)."""
+    try:
+        import markov as _m, threading
+        symbols_crypto = []
+        try:
+            from delta_client import get_perpetual_contracts
+            symbols_crypto = [p["symbol"] for p in get_perpetual_contracts()]
+        except Exception: pass
+        symbols_nse = list(NSE_FNO_SYMBOLS) if NSE_FNO_SYMBOLS else []
+        def _go(): _m.refresh_universe(symbols_crypto, symbols_nse)
+        threading.Thread(target=_go, daemon=True).start()
+        return jsonify({"ok": True,
+                        "queued_crypto": len(symbols_crypto),
+                        "queued_nse":    len(symbols_nse)})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/portfolio")

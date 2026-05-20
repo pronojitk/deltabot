@@ -222,6 +222,30 @@ def get_all_scores() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def current_regime(closes: list[float], window: int = 20, threshold: float = 0.02) -> dict:
+    """Classify the latest day. Returns label, rolling-return, and how many
+    consecutive recent days have been in this regime."""
+    if len(closes) < window + 2:
+        return {"state": "Unknown", "rolling_return_pct": None, "days_in_state": 0}
+    labels = _label_regimes(closes, window=window, threshold=threshold)
+    if not labels: return {"state": "Unknown", "rolling_return_pct": None, "days_in_state": 0}
+    last = labels[-1]
+    # Count how many trailing days share this label
+    days_in = 1
+    for v in reversed(labels[:-1]):
+        if v == last: days_in += 1
+        else: break
+    rr = closes[-1] / closes[-window-1] - 1.0 if closes[-window-1] else 0.0
+    name = {0: "Bear", 1: "Sideways", 2: "Bull"}[last]
+    return {
+        "state":               name,
+        "state_idx":           last,
+        "rolling_return_pct":  round(rr * 100, 2),
+        "days_in_state":       days_in,
+        "window":              window,
+    }
+
+
 def is_tradeable(symbol: str, min_sharpe: float) -> bool:
     """True if symbol has Markov Sharpe >= min_sharpe. If no score exists,
     we allow it (don't block trades on unscored symbols)."""

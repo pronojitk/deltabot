@@ -227,10 +227,32 @@ def api_btc_indicators():
     except Exception:
         pass
 
+    # Markov regime — uses daily candles + cached transition matrix
+    btc_regime = None
+    try:
+        import markov as _m
+        from delta_client import get_ohlcv as _go
+        daily = _go("BTCUSD", "1d", 90) or []
+        closes_d = [c["close"] for c in daily]
+        btc_regime = _m.current_regime(closes_d) if closes_d else None
+        # If we have a cached score, surface next-day probabilities from the
+        # transition matrix (computed lazily here from the daily closes).
+        if btc_regime and closes_d and btc_regime.get("state_idx") is not None:
+            labels = _m._label_regimes(closes_d)
+            if len(labels) >= 30:
+                P = _m._transition_matrix(labels)
+                cur = btc_regime["state_idx"]
+                btc_regime["next_bear"]     = round(P[cur][0] * 100, 1)
+                btc_regime["next_sideways"] = round(P[cur][1] * 100, 1)
+                btc_regime["next_bull"]     = round(P[cur][2] * 100, 1)
+    except Exception as e:
+        logger.debug("BTC regime calc failed: %s", e)
+
     return jsonify({
         "available": True,
         "symbol":    "BTCUSD",
         "price":     round(price, 2),
+        "regime":    btc_regime,
         "mark_price": round(mark_price, 2) if mark_price else None,
         # Trend / momentum primitives
         "ema9":  round(e9, 2),

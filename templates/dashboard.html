@@ -411,6 +411,26 @@
     box-shadow: 0 0 8px currentColor;
   }
 
+  /* BTC regime block */
+  .lm-regime-chip {
+    display: inline-block; padding: 3px 10px; border-radius: 10px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.6px;
+    text-transform: uppercase; font-family: var(--font-ui);
+    background: rgba(255,255,255,0.06); color: var(--muted);
+    border: 1px solid var(--border2);
+  }
+  .lm-regime-chip.bull     { background: rgba(45,212,191,0.18); color: var(--green);  border-color: rgba(45,212,191,0.35); box-shadow: 0 0 12px rgba(45,212,191,0.25); }
+  .lm-regime-chip.bear     { background: rgba(248,113,113,0.18); color: var(--red);   border-color: rgba(248,113,113,0.35); box-shadow: 0 0 12px rgba(248,113,113,0.25); }
+  .lm-regime-chip.sideways { background: rgba(251,191,36,0.18); color: var(--yellow); border-color: rgba(251,191,36,0.35); }
+  .lm-regprob-bar {
+    display: flex; height: 8px; border-radius: 4px; overflow: hidden;
+    background: var(--bg2); border: 1px solid var(--border);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.4);
+  }
+  .lm-regprob.bear     { background: linear-gradient(90deg, var(--red), #ef9a9a); }
+  .lm-regprob.sideways { background: linear-gradient(90deg, var(--yellow), #ffd966); }
+  .lm-regprob.bull     { background: linear-gradient(90deg, #6ee7b7, var(--green2)); }
+
   /* Live Market chip */
   .lm-chip {
     padding: 3px 10px; border-radius: 12px;
@@ -849,6 +869,31 @@
           <div>
             <div style="color:var(--text);font-weight:600;" id="lm-low">—</div>
             <div style="color:var(--muted);font-size:10px;">24H Low</div>
+          </div>
+        </div>
+
+        <!-- Markov regime -->
+        <div class="ps-divider" style="margin:10px 0 8px;"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-size:9.5px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Regime (Markov)</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:3px;">
+              <span id="lm-regime" class="lm-regime-chip">—</span>
+              <span style="font-size:10.5px;color:var(--muted);" id="lm-regime-sub">—</span>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:8px;">
+          <div style="font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:3px;">NEXT-DAY P(state)</div>
+          <div class="lm-regprob-bar">
+            <div class="lm-regprob bear"     id="lm-pbear"     style="width:33%;"></div>
+            <div class="lm-regprob sideways" id="lm-psideways" style="width:34%;"></div>
+            <div class="lm-regprob bull"     id="lm-pbull"     style="width:33%;"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:9.5px;margin-top:2px;font-family:var(--font-mono);">
+            <span class="neg" id="lm-pbear-lbl">Bear —</span>
+            <span style="color:var(--muted);" id="lm-psideways-lbl">Side —</span>
+            <span class="pos" id="lm-pbull-lbl">Bull —</span>
           </div>
         </div>
       </div>
@@ -1870,6 +1915,36 @@ async function refreshLiveIndicators() {
   $('lm-high').textContent   = fmtUSD(d.high_24h);
   $('lm-low').textContent    = fmtUSD(d.low_24h);
   drawSparkline('lm-spark', d.series, up);
+
+  // BTC regime (Markov)
+  const reg = d.regime || {};
+  const chip = $('lm-regime');
+  const sub  = $('lm-regime-sub');
+  if (reg && reg.state) {
+    chip.textContent = reg.state.toUpperCase();
+    chip.className   = 'lm-regime-chip ' + reg.state.toLowerCase();
+    const sign = (reg.rolling_return_pct || 0) >= 0 ? '+' : '';
+    sub.textContent  = `${reg.window || 20}d ret ${sign}${(reg.rolling_return_pct || 0).toFixed(2)}% · ${reg.days_in_state || 0}d in state`;
+  } else {
+    chip.textContent = '—'; chip.className = 'lm-regime-chip'; sub.textContent = 'no daily data yet';
+  }
+  // Next-day transition probabilities
+  const pbear = reg.next_bear, pside = reg.next_sideways, pbull = reg.next_bull;
+  if (pbear != null && pside != null && pbull != null) {
+    $('lm-pbear').style.width     = pbear + '%';
+    $('lm-psideways').style.width = pside + '%';
+    $('lm-pbull').style.width     = pbull + '%';
+    $('lm-pbear-lbl').textContent     = 'Bear ' + pbear.toFixed(0) + '%';
+    $('lm-psideways-lbl').textContent = 'Side ' + pside.toFixed(0) + '%';
+    $('lm-pbull-lbl').textContent     = 'Bull ' + pbull.toFixed(0) + '%';
+  } else {
+    $('lm-pbear').style.width = '0%';
+    $('lm-psideways').style.width = '0%';
+    $('lm-pbull').style.width = '0%';
+    $('lm-pbear-lbl').textContent     = 'Bear —';
+    $('lm-psideways-lbl').textContent = 'Side —';
+    $('lm-pbull-lbl').textContent     = 'Bull —';
+  }
 
   // ── Live Indicators · Technicals ──
   $('li-symbol').textContent = d.symbol;

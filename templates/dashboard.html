@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <title>DELTABOT TERMINAL</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c1024">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -771,6 +772,98 @@
   .statusbar > span:last-child {
     border-right: none; margin-left: auto; color: var(--green2);
     font-weight: 600;
+  }
+
+  /* ──────────────────────────────────────────────────────────
+     Mobile responsive — tablets and phones
+     ────────────────────────────────────────────────────────── */
+
+  /* Wrap every table in a horizontal-scroll container automatically */
+  .sub-tab-content table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+  .sub-tab-content table thead, .sub-tab-content table tbody { display: table; width: 100%; min-width: 760px; }
+  /* Same treatment for the mcx + open + signals tables outside sub-tabs */
+  .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* Tablet — collapse 3-col top row to 2, narrower paddings */
+  @media (max-width: 1024px) {
+    .app { padding: 12px; gap: 12px; }
+    .top-stack { grid-template-columns: 1fr 1fr; }
+    .panel { padding: 14px; }
+  }
+
+  /* Phone — full single column, larger tap targets */
+  @media (max-width: 720px) {
+    body { font-size: 12.5px; }
+
+    /* Topbar — let it wrap, hide non-essentials */
+    .topbar {
+      height: auto; min-height: 44px; padding: 8px 12px;
+      flex-wrap: wrap; gap: 6px 10px;
+    }
+    .topbar-right { gap: 8px; flex-wrap: wrap; width: 100%; justify-content: flex-end; }
+    .topbar-right .clock { display: none; }   /* save space; clock is on status bar */
+    .pill-btn { padding: 6px 10px; font-size: 10px; min-height: 32px; }
+
+    /* App grid → single column */
+    .app { grid-template-columns: 1fr; padding: 10px; gap: 12px; }
+
+    /* Top stack → single column */
+    .top-stack { grid-template-columns: 1fr; gap: 12px; }
+
+    /* Total card — slightly smaller */
+    .total-card { padding: 16px 18px; border-radius: 12px; }
+    .total-card .big { font-size: 28px; }
+    .balance-grid { gap: 10px; }
+    .bal-cell .val { font-size: 13px; }
+
+    /* Panels */
+    .panel { padding: 12px 14px; border-radius: 12px; }
+    .panel-h { font-size: 12px; padding-bottom: 8px; margin-bottom: 10px; }
+    .panel-h .sub { font-size: 10px; }
+
+    /* Sub-tabs — horizontal scroll instead of wrapping */
+    .sub-tabs {
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+      flex-wrap: nowrap; padding: 0 4px;
+    }
+    .sub-tabs::-webkit-scrollbar { height: 3px; }
+    .sub-tabs .tab {
+      padding: 10px 12px; font-size: 10px; letter-spacing: 0.6px;
+      flex-shrink: 0; white-space: nowrap;
+    }
+
+    /* Table cells tighter */
+    th, td { padding: 7px 10px; font-size: 10.5px; }
+
+    /* Indian-ORB filter bar */
+    #mcx-filter-bar { width: 100%; overflow-x: auto; flex-wrap: nowrap; gap: 4px; padding-bottom: 4px; }
+    .mcx-fb { white-space: nowrap; flex-shrink: 0; }
+
+    /* AI Screener filter cells - 2x2 grid on phones */
+    .scr-counts { grid-template-columns: 1fr 1fr; }
+
+    /* Strategy performance + Macro regime — already vertical, just tighten */
+    .reg-block { padding: 10px; }
+
+    /* Symbol P&L expanded detail — stack the 3-col grid */
+    .sp-detail td > div { grid-template-columns: 1fr !important; gap: 12px !important; }
+
+    /* Live Market — sparkline a touch shorter */
+    #lm-spark { height: 50px !important; }
+
+    /* Status bar — wrap items */
+    .statusbar { height: auto; min-height: 26px; padding: 4px 10px; flex-wrap: wrap; font-size: 9.5px; gap: 4px; }
+    .statusbar > span { padding: 0 6px; }
+    .statusbar > span:last-child { margin-left: 0; padding-left: 0; }
+  }
+
+  /* Very small phones (≤ 380px) */
+  @media (max-width: 380px) {
+    .topbar-right { font-size: 10px; gap: 6px; }
+    .pill-btn { padding: 5px 8px; font-size: 9.5px; }
+    .total-card .big { font-size: 24px; }
+    .balance-grid { grid-template-columns: 1fr 1fr; }
+    .balance-grid .bal-cell:nth-child(3) { grid-column: 1 / -1; }
   }
 </style>
 </head>

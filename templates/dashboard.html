@@ -411,6 +411,27 @@
     box-shadow: 0 0 8px currentColor;
   }
 
+  /* Macro Regime panel (Gold + Nifty) */
+  .reg-stack  { display: flex; flex-direction: column; gap: 14px; }
+  .reg-block {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 10px 12px;
+  }
+  .reg-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .reg-name { font-size: 13px; font-weight: 700; color: var(--text); letter-spacing: 0.3px; }
+  .reg-tick { font-size: 10px; color: var(--muted); font-weight: 500; font-family: var(--font-mono); }
+  .reg-price{
+    font-size: 13px; font-weight: 700; color: var(--text);
+    font-family: var(--font-mono); font-feature-settings: "tnum";
+  }
+  .reg-sub  { font-size: 10.5px; color: var(--muted); font-family: var(--font-mono); }
+  .reg-prob-labels {
+    display: flex; justify-content: space-between;
+    font-size: 9.5px; margin-top: 3px; font-family: var(--font-mono);
+  }
+
   /* BTC regime block */
   .lm-regime-chip {
     display: inline-block; padding: 3px 10px; border-radius: 10px;
@@ -898,13 +919,78 @@
         </div>
       </div>
 
-      <!-- Live Indicators (BTC) -->
-      <div class="panel li-panel">
+      <!-- Regime: Gold + Nifty -->
+      <div class="panel">
         <div class="panel-h">
-          <span>⚡ Live Indicators</span>
-          <span class="sub" id="li-symbol">BTCUSD</span>
+          <span>📈 Macro Regime</span>
+          <span class="sub">Markov · 5y daily · 20d window</span>
         </div>
+        <div class="reg-stack">
+          <!-- GOLD -->
+          <div class="reg-block">
+            <div class="reg-head">
+              <span class="reg-name">GOLD <span class="reg-tick">(GC=F)</span></span>
+              <span class="reg-price" id="reg-gold-price">—</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+              <span class="lm-regime-chip" id="reg-gold-chip">—</span>
+              <span class="reg-sub" id="reg-gold-sub">—</span>
+            </div>
+            <div class="lm-regprob-bar" style="margin-top:8px;">
+              <div class="lm-regprob bear"     id="reg-gold-pbear"     style="width:33%;"></div>
+              <div class="lm-regprob sideways" id="reg-gold-psideways" style="width:34%;"></div>
+              <div class="lm-regprob bull"     id="reg-gold-pbull"     style="width:33%;"></div>
+            </div>
+            <div class="reg-prob-labels">
+              <span class="neg" id="reg-gold-pbear-lbl">Bear —</span>
+              <span style="color:var(--muted);" id="reg-gold-psideways-lbl">Side —</span>
+              <span class="pos" id="reg-gold-pbull-lbl">Bull —</span>
+            </div>
+          </div>
 
+          <!-- NIFTY -->
+          <div class="reg-block">
+            <div class="reg-head">
+              <span class="reg-name">NIFTY 50 <span class="reg-tick">(^NSEI)</span></span>
+              <span class="reg-price" id="reg-nifty-price">—</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+              <span class="lm-regime-chip" id="reg-nifty-chip">—</span>
+              <span class="reg-sub" id="reg-nifty-sub">—</span>
+            </div>
+            <div class="lm-regprob-bar" style="margin-top:8px;">
+              <div class="lm-regprob bear"     id="reg-nifty-pbear"     style="width:33%;"></div>
+              <div class="lm-regprob sideways" id="reg-nifty-psideways" style="width:34%;"></div>
+              <div class="lm-regprob bull"     id="reg-nifty-pbull"     style="width:33%;"></div>
+            </div>
+            <div class="reg-prob-labels">
+              <span class="neg" id="reg-nifty-pbear-lbl">Bear —</span>
+              <span style="color:var(--muted);" id="reg-nifty-psideways-lbl">Side —</span>
+              <span class="pos" id="reg-nifty-pbull-lbl">Bull —</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hidden placeholders so removed-element JS doesn't crash -->
+      <div style="display:none;">
+        <span id="li-symbol"></span><span id="li-ema9"></span><span id="li-ema21"></span>
+        <span id="li-ema50"></span><span id="li-rsi"></span><span id="li-rsi-tag"></span>
+        <span id="li-macd-line"></span><span id="li-macd-sig"></span><span id="li-macd-hist"></span>
+        <span id="li-bb"></span><span id="li-bb-dot"></span><span id="li-stoch"></span>
+        <span id="li-adx"></span><span id="li-adx-tag"></span><span id="li-atr"></span>
+        <span id="li-atr-pct"></span><span id="li-price"></span><span id="li-mark"></span>
+        <span id="li-24h-chg"></span><span id="li-hi"></span><span id="li-lo"></span>
+        <span id="li-funding"></span><span id="li-oi"></span><span id="li-vol"></span>
+        <div id="li-trend" class="li-check"><span id="li-trend-sub"></span><span id="li-trend-badge"></span></div>
+        <div id="li-momentum" class="li-check"><span id="li-mom-sub"></span><span id="li-mom-badge"></span></div>
+        <div id="li-macd-chk" class="li-check"><span id="li-macd-sub"></span><span id="li-macd-badge"></span></div>
+        <div id="li-adxchk" class="li-check"><span id="li-adxchk-sub"></span><span id="li-adxchk-badge"></span></div>
+        <div id="li-volchk" class="li-check"><span id="li-volchk-sub"></span><span id="li-volchk-badge"></span></div>
+      </div>
+
+      <!-- Legacy Live Indicators panel kept hidden (refreshLiveIndicators still updates BTC fields elsewhere) -->
+      <div class="panel li-panel" style="display:none;">
         <div class="li-tabs">
           <button class="li-tab active" data-litab="tech">Technicals</button>
           <button class="li-tab" data-litab="fund">Market</button>
@@ -1897,6 +1983,49 @@ document.addEventListener('click', e => {
 
 const fmtUSD = v => '$' + (+v).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 
+async function refreshMacroRegime() {
+  const apply = (prefix, d) => {
+    const chip = $(`${prefix}-chip`);
+    const sub  = $(`${prefix}-sub`);
+    const price = $(`${prefix}-price`);
+    if (!d || !d.available || !d.state) {
+      if (chip) { chip.textContent = '—'; chip.className = 'lm-regime-chip'; }
+      if (sub)  sub.textContent = 'no data';
+      if (price) price.textContent = '—';
+      return;
+    }
+    chip.textContent = d.state.toUpperCase();
+    chip.className   = 'lm-regime-chip ' + d.state.toLowerCase();
+    const sign = (d.rolling_return_pct || 0) >= 0 ? '+' : '';
+    sub.textContent  = `${d.window || 20}d ${sign}${(d.rolling_return_pct || 0).toFixed(2)}% · ${d.days_in_state || 0}d in state`;
+    if (price && d.price != null) {
+      // Indian rupee for ^NSEI/.NS, dollars otherwise
+      const isInr = prefix.endsWith('nifty');
+      price.textContent = (isInr ? '₹' : '$') + (+d.price).toLocaleString(undefined, {maximumFractionDigits: 2});
+    }
+    const setBar = (suffix, v) => {
+      const bar = $(`${prefix}-${suffix}`); const lbl = $(`${prefix}-${suffix}-lbl`);
+      if (bar) bar.style.width = (v || 0) + '%';
+      if (lbl) {
+        const name = suffix === 'pbear' ? 'Bear' : suffix === 'psideways' ? 'Side' : 'Bull';
+        lbl.textContent = `${name} ${v != null ? v.toFixed(0) : '—'}%`;
+      }
+    };
+    setBar('pbear',     d.next_bear);
+    setBar('psideways', d.next_sideways);
+    setBar('pbull',     d.next_bull);
+  };
+
+  try {
+    const [gold, nifty] = await Promise.all([
+      fetch('/api/regime/yfinance/GC%3DF').then(r => r.json()),
+      fetch('/api/regime/yfinance/%5ENSEI').then(r => r.json()),
+    ]);
+    apply('reg-gold',  gold);
+    apply('reg-nifty', nifty);
+  } catch(e) { console.warn('macro-regime', e); }
+}
+
 async function refreshLiveIndicators() {
   const r = await fetch('/api/btc_indicators'); const d = await r.json();
   if (!d.available) {
@@ -2042,6 +2171,7 @@ async function refreshAll() {
     safe(refreshStrategies,   'strategies'),
     safe(refreshDashScreener, 'screener'),
     safe(refreshLiveIndicators,'live-ind'),
+    safe(refreshMacroRegime,   'macro-regime'),
     safe(refreshSymbolPnL,    'sym-pnl'),
     safe(refreshMarkov,       'markov'),
     safe(refreshMCX,          'mcx'),

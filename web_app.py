@@ -188,6 +188,36 @@ def _tick_open_prices():
         logger.debug("tick failed: %s", e)
 
 
+@app.route("/api/regime/<source>/<path:symbol>")
+def api_regime(source: str, symbol: str):
+    """Generic Markov regime endpoint.
+    source ∈ {'delta', 'yfinance'}.  Returns current state + next-day P(state)."""
+    try:
+        import markov as _m
+        if source == "delta":
+            closes = _m._closes_from_delta(symbol, years=5)
+        else:
+            closes = _m._closes_from_yfinance(symbol, years=5)
+        if not closes or len(closes) < 30:
+            return jsonify({"available": False, "symbol": symbol, "source": source})
+        reg = _m.current_regime(closes)
+        labels = _m._label_regimes(closes)
+        if len(labels) >= 30 and reg.get("state_idx") is not None:
+            P = _m._transition_matrix(labels)
+            cur = reg["state_idx"]
+            reg["next_bear"]     = round(P[cur][0] * 100, 1)
+            reg["next_sideways"] = round(P[cur][1] * 100, 1)
+            reg["next_bull"]     = round(P[cur][2] * 100, 1)
+        # Latest price for context
+        reg["price"] = float(closes[-1])
+        reg["symbol"] = symbol
+        reg["source"] = source
+        reg["available"] = True
+        return jsonify(reg)
+    except Exception as e:
+        return jsonify({"available": False, "error": str(e), "symbol": symbol, "source": source}), 500
+
+
 @app.route("/api/btc_indicators")
 def api_btc_indicators():
     """Live BTC: price + EMA/RSI/MACD/BB/Stoch/ADX/ATR + 24h market + funding/OI."""

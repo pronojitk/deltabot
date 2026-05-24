@@ -115,7 +115,7 @@ def _get(endpoint: str, params: dict = None, retries: int = 3) -> dict | None:
     return None
 
 
-def get_perpetual_contracts() -> list[dict]:
+def get_perpetual_contracts(apply_markov: bool = True) -> list[dict]:
     """Return active perpetual futures, filtered to top-N liquid + old-enough contracts.
 
     Filters applied in order:
@@ -123,6 +123,9 @@ def get_perpetual_contracts() -> list[dict]:
       2. Exclude tokenized US equities (they return no candle data).
       3. Skip listings younger than MIN_LISTING_AGE_DAYS (whippy / unproven).
       4. Sort by 24h turnover (USD) desc, take top MAX_SYMBOLS.
+      5. (optional, default on) Markov pre-screen: drop sharpe < min, NULLs, etc.
+         Set apply_markov=False to get the pre-Markov universe (used by the
+         Markov refresh job itself so it can score the full pool).
     """
     from datetime import datetime, timezone
     data = _get("/v2/products")
@@ -214,7 +217,7 @@ def get_perpetual_contracts() -> list[dict]:
     # Markov pre-screen — drop symbols with walk-forward Sharpe < threshold.
     # NULL Sharpe (insufficient history) → blocked if MARKOV_BLOCK_UNSCORED.
     # Symbols in MARKOV_FORCE_KEEP bypass the gate entirely.
-    if MARKOV_FILTER_ENABLED:
+    if MARKOV_FILTER_ENABLED and apply_markov:
         try:
             from markov import get_score
             force_keep = set(MARKOV_FORCE_KEEP or [])

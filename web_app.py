@@ -37,9 +37,9 @@ try:
     import markov as _markov
     from delta_client import get_perpetual_contracts as _gpc
     def _crypto_universe():
-        # Pull a wide list (skip the Markov-filter step itself by reading raw products)
-        # — but get_perpetual_contracts already filters. Acceptable for refresh purposes.
-        try:    return [p["symbol"] for p in _gpc()]
+        # Pull the FULL pre-Markov pool so the refresh can score unscored symbols
+        # (otherwise NULL-Sharpe names would never get re-evaluated).
+        try:    return [p["symbol"] for p in _gpc(apply_markov=False)]
         except Exception: return []
     def _nse_universe(): return list(NSE_FNO_SYMBOLS)
     _markov.start_background_refresh(_crypto_universe, _nse_universe)
@@ -669,7 +669,7 @@ def api_markov_refresh():
         symbols_crypto = []
         try:
             from delta_client import get_perpetual_contracts
-            symbols_crypto = [p["symbol"] for p in get_perpetual_contracts()]
+            symbols_crypto = [p["symbol"] for p in get_perpetual_contracts(apply_markov=False)]
         except Exception: pass
         symbols_nse = list(NSE_FNO_SYMBOLS) if NSE_FNO_SYMBOLS else []
         def _go(): _m.refresh_universe(symbols_crypto, symbols_nse)

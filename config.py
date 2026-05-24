@@ -59,6 +59,7 @@ MARKOV_FORCE_KEEP = [
     "MMTUSD",      # bot +$99 / Markov NULL
     "AINUSD",      # bot +$97 / Markov -0.44
     "TRBUSD",      # bot positive / Markov -0.27
+    "PAXGUSD",     # gold ORB strategy needs PAXG even with NULL daily Markov
 ]
 # Always include these majors, even when their turnover field is null on Delta India.
 FORCE_INCLUDE_SYMBOLS = [

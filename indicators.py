@@ -425,10 +425,108 @@ def detect_gold_signal(candles_15m: list[dict],
                        candles_1h:  list[dict],
                        params: dict | None = None) -> list[dict]:
     """
-    PAXG: SMC + Fib OTE + EMA 7/21 confluence, 1h bias / 15m entry.
-    Returns at most one signal per call. No EMA filter on price-cross — EMA 7/21
-    alignment is required on BOTH timeframes as a confluence filter only.
+    PAXG ORB strategy (v3).
+      • 1H ORB candle: 22:00–23:00 UTC (3:30–4:30 IST)
+      • Wait for current 15M candle to:
+          - close BEYOND the ORB high/low,  AND
+          - close on the correct side of 15M EMA(21)
+      • SL  = opposite side of ORB
+      • TP1 = entry ± 1× risk        (close 50%)
+      • After TP1:  SL → entry (BE), trail by 15M EMA(21).
+        Exit remaining 50% when 15M candle closes back through EMA21.
+      • One trade per UTC day per symbol.
     """
+    p = params or {}
+    el = p.get("ema_long", 21)
+    if len(candles_1h) < 3 or len(candles_15m) < el + 2:
+        return []
+
+    # ── Find today's ORB candle (1H starting at 22:00 UTC) ────────────────
+    # The "current trading day" = the most recent UTC day whose 22:00 1H bar exists.
+    SESSION_HOUR_UTC = 22   # 22:00 UTC = 03:30 IST start
+    last_1h_ts = candles_1h[-1]["time"]
+    # Walk back through 1H candles to find one whose start hour matches.
+    orb = None
+    for c in reversed(candles_1h):
+        t = c["time"]
+        # Skip if candle starts after the ORB window end (last 24h window cleanest)
+        if (last_1h_ts - t) > 86400 + 3600:  # more than ~1 day old → stale
+            break
+        if (t % 86400) == SESSION_HOUR_UTC * 3600:
+            orb = {"high": c["high"], "low": c["low"], "time": t}
+            break
+    if not orb:
+        return []
+
+    # ── Only trigger AFTER the ORB candle has fully closed ────────────────
+    last_15m = candles_15m[-1]
+    if last_15m["time"] < orb["time"] + 3600:
+        return []   # still inside / before the ORB candle window
+
+    # ── 15M EMA(21) for entry filter + trail ──────────────────────────────
+    closes_15m = [c["close"] for c in candles_15m]
+    e21_15 = ema(closes_15m, el)[-1]
+    if e21_15 == 0.0:
+        return []
+
+    price = last_15m["close"]
+    rng   = orb["high"] - orb["low"]
+
+    base = {
+        "ema21":        round(e21_15, 8),
+        "atr":          round(rng, 8),
+        "orb_high":     round(orb["high"], 8),
+        "orb_low":      round(orb["low"], 8),
+        "orb_time_utc": orb["time"],
+        "close":        price,
+        "time":         last_15m["time"],
+        "tests":        0,
+    }
+
+    # LONG: 15M close > ORB high AND > EMA21
+    if price > orb["high"] and price > e21_15:
+        sl   = orb["low"]
+        risk = price - sl
+        if risk <= 0: return []
+        return [{
+            **base,
+            "type":              "BREAKOUT",
+            "level_label":       "Gold-ORB-H",
+            "level_price":       round(orb["high"], 8),
+            "sl":                round(sl, 8),
+            "tp":                round(price + risk, 8),    # 1:1 — partial target
+            # Partial-close + indicator-trail wiring (read by forward_test):
+            "partial_tp1":       round(price + risk, 8),
+            "partial_close_pct": 0.5,
+            "trail_indicator":   "ema21_15m",
+            "use_trailing":      False,    # custom logic via trail_indicator
+            "max_hold_bars":     p.get("max_hold_bars", 96),
+        }]
+
+    # SHORT: 15M close < ORB low AND < EMA21
+    if price < orb["low"] and price < e21_15:
+        sl   = orb["high"]
+        risk = sl - price
+        if risk <= 0: return []
+        return [{
+            **base,
+            "type":              "BREAKDOWN",
+            "level_label":       "Gold-ORB-L",
+            "level_price":       round(orb["low"], 8),
+            "sl":                round(sl, 8),
+            "tp":                round(price - risk, 8),
+            "partial_tp1":       round(price - risk, 8),
+            "partial_close_pct": 0.5,
+            "trail_indicator":   "ema21_15m",
+            "use_trailing":      False,
+            "max_hold_bars":     p.get("max_hold_bars", 96),
+        }]
+
+    return []
+
+
+def _detect_gold_signal_legacy(candles_15m, candles_1h, params=None):
+    """Old SMC + Fib OTE logic — kept for reference, not wired."""
     p = params or {}
     es           = p.get("ema_short", 7)
     el           = p.get("ema_long", 21)

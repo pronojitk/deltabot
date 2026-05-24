@@ -241,10 +241,15 @@ class BotEngine:
                     if diag.get("stale"):
                         self._emit("error", symbol=symbol, error="No candle data (API empty/rate-limited)")
 
-                # Forward-test: check open trades against current price
+                # Forward-test: check open trades against current price.
+                # Pass per-symbol indicators that some strategies need for
+                # indicator-based trailing (gold ORB uses 15m EMA21).
                 if last_price is not None:
                     self._emit("price", symbol=symbol, price=last_price)
-                    closed = self.forward_tester.update(symbol, last_price, last_time)
+                    extras = {}
+                    if diag and diag.get("ema21") is not None:
+                        extras["ema21_15m"] = diag.get("ema21")
+                    closed = self.forward_tester.update(symbol, last_price, last_time, extras=extras)
                     for t in closed:
                         closed_count += 1
                         self._emit("trade_closed", trade=t)

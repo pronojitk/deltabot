@@ -312,15 +312,64 @@ class ForwardTester:
         )
         return trade
 
-    def update(self, symbol: str, current_price: float, current_time: int) -> list[dict]:
-        """Re-price open trades for this symbol. Returns newly closed trades."""
+    def update(self, symbol: str, current_price: float, current_time: int,
+               extras: dict | None = None) -> list[dict]:
+        """Re-price open trades for this symbol. Returns newly closed trades.
+
+        `extras` may contain runtime indicators that some trades need (e.g.
+        gold ORB uses {'ema21_15m': value} for indicator-based trailing).
+        """
         self.last_prices[symbol] = current_price
+        extras = extras or {}
         closed = []
         with self.lock:
             for t in self.trades:
                 if t["symbol"] != symbol or t["status"] != "OPEN":
                     continue
                 t["bars_held"] += 1
+
+                # ── Gold-style partial close at TP1 (1:1 R) ───────────────
+                if t.get("partial_tp1") and not t.get("tp1_filled"):
+                    side = t["side"]; tp1 = t["partial_tp1"]; entry = t["entry_price"]
+                    hit = (side == "LONG"  and current_price >= tp1) or \
+                          (side == "SHORT" and current_price <= tp1)
+                    if hit:
+                        frac = float(t.get("partial_close_pct", 0.5))
+                        partial_notional = (t["notional_usd"] or 0) * frac
+                        move = ((tp1 - entry) / entry) if side == "LONG" else ((entry - tp1) / entry)
+                        partial_pnl = partial_notional * move
+                        # Half of the round-trip fees + slippage on the closed half
+                        partial_fees = partial_notional * TAKER_FEE_PCT * 2
+                        net = partial_pnl - partial_fees
+                        self.balance += net
+                        t["tp1_filled"]        = True
+                        t["tp1_price"]         = tp1
+                        t["partial_pnl_usd"]   = round(partial_pnl, 2)
+                        t["partial_fees_usd"]  = round(partial_fees, 2)
+                        t["partial_net_usd"]   = round(net, 2)
+                        # Reduce the working position to the remainder
+                        t["notional_usd"]      = round((t["notional_usd"] or 0) * (1 - frac), 2)
+                        t["margin_usd"]        = round((t["margin_usd"]   or 0) * (1 - frac), 2)
+                        t["qty"]               = round((t["qty"]          or 0) * (1 - frac), 8)
+                        # Move SL to entry (breakeven) on the remainder
+                        t["sl"]                = entry
+                        t["be_moved"]          = True
+                        logger.info("Partial close %s %s @ %g | half-PnL $%.2f | SL→BE",
+                                    side, symbol, tp1, partial_pnl)
+
+                # ── Indicator-based trail (e.g. EMA21 cross) after TP1 ───
+                if t.get("tp1_filled") and t.get("trail_indicator") == "ema21_15m":
+                    ema_v = extras.get("ema21_15m")
+                    if ema_v:
+                        side = t["side"]
+                        # Exit when current 15M close has CROSSED THROUGH the EMA
+                        if (side == "LONG"  and current_price < ema_v) or \
+                           (side == "SHORT" and current_price > ema_v):
+                            self._close_trade(t, "WIN", current_price, current_time)
+                            t["exit_reason"] = "EMA21_TRAIL"
+                            self._update_trade(t)
+                            closed.append(dict(t))
+                            continue
 
                 # Dynamic trail tightening: once unrealised P&L (on margin)
                 # reaches TIGHTEN_TRAIL_AFTER_PCT, narrow the trail distance.
@@ -414,8 +463,14 @@ class ForwardTester:
         gross_pnl = trade["notional_usd"] * move_pct
         # Round-trip taker fees on entry + exit notional
         fees = trade["notional_usd"] * TAKER_FEE_PCT * 2
+        # For trades that already partial-closed (e.g. gold ORB at TP1), the
+        # partial P&L was already realised to balance. The remainder's P&L is
+        # computed below; final reported pnl_usd is the SUM of both halves.
         pnl_usd = gross_pnl - fees
         self.balance += pnl_usd
+        partial = float(trade.get("partial_net_usd") or 0)
+        if partial:
+            pnl_usd += partial   # report combined for the trade row
 
         trade["status"]        = status
         trade["exit_reason"]   = "STOP_LOSS"   if status == "LOSS" else \

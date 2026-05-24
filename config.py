@@ -145,18 +145,16 @@ DEFAULT_PARAMS = {
 _LARGE_CAP_1H = {**DEFAULT_PARAMS, "timeframe": "1h", "max_hold_bars": 240}
 
 # Gold strategy — pure SMC + Fib OTE, multi-timeframe.
-#   • 1h: market structure (BOS) determines bias and impulse leg
-#   • 15m: entry trigger when price is in the 1h OTE zone (0.618–0.786 fib)
-# No EMA, no entropy filter — structure + fib only.
+#   • 1H ORB: 22:00–23:00 UTC (03:30–04:30 IST) defines the range
+#   • 15M entry: close BEYOND ORB high/low AND beyond 15M EMA(21)
+#   • SL  = opposite ORB level
+#   • TP1 = entry ± 1R, close 50%
+#   • After TP1: SL → entry (BE), trail by 15M EMA(21) cross
 _GOLD_PARAMS = {
     "strategy":             "gold",
     "timeframe":            "15m",   # entry execution timeframe
-    "htf_timeframe":        "1h",    # structure / bias timeframe
-    "swing_bars":           5,       # bars each side that confirm a 1h pivot
-    "bos_lookback":         30,      # max 1h bars since last BOS
-    "atr_period":           14,
-    "atr_initial_sl_mult":  2.5,     # widened: was 2.0
-    "atr_trail_mult":       4.0,     # widened: was 3.0
+    "htf_timeframe":        "1h",    # ORB timeframe (1H candles)
+    "ema_long":             21,      # EMA21 for entry filter + trail
     "max_hold_bars":        96,      # 96 × 15m = 24h
 }
 
@@ -165,7 +163,8 @@ SYMBOL_PARAMS: dict = {
     "BTCUSDT": _LARGE_CAP_1H,
     "ETHUSDT": _LARGE_CAP_1H,
     "XRPUSDT": _LARGE_CAP_1H,
-    # Gold strategy — multi-timeframe entries on PAXG only.
+    # Gold strategy — PAXG only (Delta India naming: PAXGUSD; legacy PAXGUSDT also covered).
+    "PAXGUSD":  _GOLD_PARAMS,
     "PAXGUSDT": _GOLD_PARAMS,
     # SOL, DOGE, and all other unlisted symbols → DEFAULT_PARAMS (Donchian, 15m).
 }

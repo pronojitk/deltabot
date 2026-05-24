@@ -7,7 +7,7 @@ from config import (
     DELTA_BASE_URL, REQUEST_DELAY, CANDLE_LIMIT,
     DELTA_API_KEY, DELTA_API_SECRET, DELTA_REGION,
     MAX_SYMBOLS, MIN_LISTING_AGE_DAYS, FORCE_INCLUDE_SYMBOLS, SKIP_SYMBOLS,
-    MARKOV_FILTER_ENABLED, MARKOV_MIN_SHARPE,
+    MARKOV_FILTER_ENABLED, MARKOV_MIN_SHARPE, MARKOV_BLOCK_UNSCORED, MARKOV_FORCE_KEEP,
 )
 
 logger = logging.getLogger(__name__)
@@ -212,25 +212,41 @@ def get_perpetual_contracts() -> list[dict]:
     )
 
     # Markov pre-screen — drop symbols with walk-forward Sharpe < threshold.
-    # If a symbol hasn't been scored yet (first boot, or new listing), keep it.
+    # NULL Sharpe (insufficient history) → blocked if MARKOV_BLOCK_UNSCORED.
+    # Symbols in MARKOV_FORCE_KEEP bypass the gate entirely.
     if MARKOV_FILTER_ENABLED:
         try:
             from markov import get_score
-            kept, dropped = [], []
+            force_keep = set(MARKOV_FORCE_KEEP or [])
+            kept, dropped_low, dropped_null, kept_forced = [], [], [], []
             for p in final:
-                s = get_score(p["symbol"])
-                if s is None or s.get("sharpe") is None:
-                    kept.append(p)
+                sym = p["symbol"]
+                if sym in force_keep:
+                    kept.append(p); kept_forced.append(sym); continue
+                s = get_score(sym)
+                sh = s.get("sharpe") if s else None
+                if sh is None:
+                    if MARKOV_BLOCK_UNSCORED:
+                        dropped_null.append(sym)
+                    else:
+                        kept.append(p)
                     continue
-                if s["sharpe"] >= MARKOV_MIN_SHARPE:
+                if sh >= MARKOV_MIN_SHARPE:
                     kept.append(p)
                 else:
-                    dropped.append((p["symbol"], s["sharpe"]))
-            if dropped:
-                logger.info("Markov filter dropped %d symbols (Sharpe < %.2f): %s",
-                            len(dropped), MARKOV_MIN_SHARPE,
-                            ", ".join(f"{s}({sh:+.2f})" for s, sh in dropped[:8])
-                            + ("…" if len(dropped) > 8 else ""))
+                    dropped_low.append((sym, sh))
+            if dropped_low:
+                logger.info("Markov filter dropped %d (Sharpe < %.2f): %s",
+                            len(dropped_low), MARKOV_MIN_SHARPE,
+                            ", ".join(f"{s}({sh:+.2f})" for s, sh in dropped_low[:8])
+                            + ("…" if len(dropped_low) > 8 else ""))
+            if dropped_null:
+                logger.info("Markov filter dropped %d unscored (no history): %s",
+                            len(dropped_null),
+                            ", ".join(dropped_null[:8])
+                            + ("…" if len(dropped_null) > 8 else ""))
+            if kept_forced:
+                logger.info("Markov filter forced-keep: %s", ", ".join(kept_forced))
             final = kept
         except Exception as e:
             logger.warning("Markov filter unavailable: %s", e)

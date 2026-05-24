@@ -49,7 +49,17 @@ REGIME_SHORT_MAX_BTC_24H = 1.0     # skip SHORT entries if BTC 24h % > this
 # computes a walk-forward Sharpe. Skip any symbol with sharpe < MARKOV_MIN_SHARPE.
 # Set MARKOV_FILTER_ENABLED = False to disable (universe stays as-is).
 MARKOV_FILTER_ENABLED = True
-MARKOV_MIN_SHARPE     = 0.0        # only trade symbols whose walk-forward Sharpe >= this
+MARKOV_MIN_SHARPE     = 0.5        # only trade symbols whose walk-forward Sharpe >= this
+MARKOV_BLOCK_UNSCORED = True       # treat NULL Sharpe (insufficient history) as FAIL
+# Symbols Markov daily mis-scores (intraday Donchian likes them but daily walk-forward
+# doesn't). Override Markov for these — they bypass the gate.
+MARKOV_FORCE_KEEP = [
+    "RUNEUSD",     # bot +$96 / Markov -0.03
+    "PEOPLEUSD",   # bot +$80 / Markov -0.24
+    "MMTUSD",      # bot +$99 / Markov NULL
+    "AINUSD",      # bot +$97 / Markov -0.44
+    "TRBUSD",      # bot positive / Markov -0.27
+]
 # Always include these majors, even when their turnover field is null on Delta India.
 FORCE_INCLUDE_SYMBOLS = [
     "BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD", "BNBUSD", "DOGEUSD",

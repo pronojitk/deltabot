@@ -112,25 +112,34 @@ DB_FILE = Path(__file__).parent / "ft_state.db"
 class MCXBot:
     def __init__(self, symbols=None, on_event=None, send_telegram=True):
         base_symbols = symbols or NSE_FNO_SYMBOLS
-        # Markov pre-screen — keep only symbols with walk-forward Sharpe ≥ threshold.
-        # Symbols not yet scored stay in (so the bot works on first boot before refresh runs).
+        # Markov pre-screen — keep symbols whose walk-forward Sharpe ≥ threshold.
+        # NULL Sharpe blocked if MARKOV_BLOCK_UNSCORED. MARKOV_FORCE_KEEP bypasses.
         try:
-            from config import MARKOV_FILTER_ENABLED, MARKOV_MIN_SHARPE
+            from config import (MARKOV_FILTER_ENABLED, MARKOV_MIN_SHARPE,
+                                MARKOV_BLOCK_UNSCORED, MARKOV_FORCE_KEEP)
             if MARKOV_FILTER_ENABLED:
                 from markov import get_score
-                filtered, dropped = [], []
+                force_keep = set(MARKOV_FORCE_KEEP or [])
+                filtered, dropped_low, dropped_null = [], [], []
                 for sym in base_symbols:
+                    if sym in force_keep:
+                        filtered.append(sym); continue
                     s = get_score(sym)
-                    if s is None or s.get("sharpe") is None:
-                        filtered.append(sym)
-                    elif s["sharpe"] >= MARKOV_MIN_SHARPE:
+                    sh = s.get("sharpe") if s else None
+                    if sh is None:
+                        if MARKOV_BLOCK_UNSCORED: dropped_null.append(sym)
+                        else: filtered.append(sym)
+                    elif sh >= MARKOV_MIN_SHARPE:
                         filtered.append(sym)
                     else:
-                        dropped.append((sym, s["sharpe"]))
-                if dropped:
-                    logger.info("Indian-ORB Markov filter dropped %d/%d: %s",
-                                len(dropped), len(base_symbols),
-                                ", ".join(f"{s}({sh:+.2f})" for s, sh in dropped[:8]))
+                        dropped_low.append((sym, sh))
+                if dropped_low:
+                    logger.info("Indian-ORB Markov dropped %d low-Sharpe: %s",
+                                len(dropped_low),
+                                ", ".join(f"{s}({sh:+.2f})" for s, sh in dropped_low[:8]))
+                if dropped_null:
+                    logger.info("Indian-ORB Markov dropped %d unscored: %s",
+                                len(dropped_null), ", ".join(dropped_null[:8]))
                 base_symbols = filtered
         except Exception as e:
             logger.warning("Markov filter unavailable for Indian-ORB: %s", e)

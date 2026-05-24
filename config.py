@@ -31,7 +31,7 @@ SCAN_INTERVAL = 60         # seconds between full scans
 REQUEST_DELAY = 0.3        # seconds between API calls to avoid rate limiting
 
 # ─── Symbol universe filters ────────────────────────────────────────────────
-MAX_SYMBOLS           = 40       # keep only the top-N perpetuals by 24h volume
+MAX_SYMBOLS           = 80       # keep only the top-N perpetuals by 24h volume
 MIN_LISTING_AGE_DAYS  = 30       # skip newly listed contracts (whippy / unproven)
 # Hard blacklist: never trade these even if they make the volume cut.
 # Common reasons: thin order books, manipulative price action, repeated SL hits in backtest.
@@ -49,7 +49,7 @@ REGIME_SHORT_MAX_BTC_24H = 1.0     # skip SHORT entries if BTC 24h % > this
 # computes a walk-forward Sharpe. Skip any symbol with sharpe < MARKOV_MIN_SHARPE.
 # Set MARKOV_FILTER_ENABLED = False to disable (universe stays as-is).
 MARKOV_FILTER_ENABLED = True
-MARKOV_MIN_SHARPE     = 0.5        # only trade symbols whose walk-forward Sharpe >= this
+MARKOV_MIN_SHARPE     = 0.3        # only trade symbols whose walk-forward Sharpe >= this
 MARKOV_BLOCK_UNSCORED = True       # treat NULL Sharpe (insufficient history) as FAIL
 # Symbols Markov daily mis-scores (intraday Donchian likes them but daily walk-forward
 # doesn't). Override Markov for these — they bypass the gate.

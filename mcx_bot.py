@@ -66,6 +66,20 @@ NSE_FNO_SYMBOLS = [
     # ETF / commodity exposure (kept from old MCX list)
     "GOLDBEES.NS", "SILVERBEES.NS",
 ]
+# Chronic losers from the forward test — sub-40% win rate with clear negative
+# edge over a meaningful sample. ORB doesn't work on low-beta IT largecaps or
+# the Adani complex. Pruned to lift the strategy's profit factor.
+MCX_SKIP_SYMBOLS = [
+    "ADANIGREEN.NS",  # -Rs2141 / 12% win (n=8)
+    "INFY.NS",        # -Rs1303 / 33% win (n=6)
+    "HCLTECH.NS",     # -Rs1180 / 0% win (n=6)
+    "ADANIPORTS.NS",  # -Rs871  / 17% win (n=6)
+    "CIPLA.NS",       # -Rs871  / 0% win (n=4)
+    "ULTRACEMCO.NS",  # -Rs845  / 0% win (n=5)
+    "WIPRO.NS",       # -Rs571  / 38% win (n=8)
+]
+NSE_FNO_SYMBOLS = [s for s in NSE_FNO_SYMBOLS if s not in MCX_SKIP_SYMBOLS]
+
 # Backward-compat alias so any legacy code keeps working.
 MCX_SYMBOLS = NSE_FNO_SYMBOLS
 

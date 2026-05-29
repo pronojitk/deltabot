@@ -807,6 +807,33 @@ def api_export_trades_csv():
                     headers={"Content-Disposition": "attachment;filename=trades.csv"})
 
 
+@app.route("/api/export/indian_orb.csv")
+def api_export_indian_orb_csv():
+    """Stream the Indian-ORB trades straight from the indian_orb_trades table."""
+    import io, csv as _csv, sqlite3
+    from pathlib import Path
+    from flask import Response
+    db_path = Path(__file__).parent / "ft_state.db"
+    buf = io.StringIO()
+    try:
+        con = sqlite3.connect(str(db_path))
+        con.row_factory = sqlite3.Row
+        rows = con.execute(
+            "SELECT * FROM indian_orb_trades ORDER BY entry_time_ts"
+        ).fetchall()
+        con.close()
+    except sqlite3.OperationalError:
+        rows = []  # table doesn't exist yet (Indian-ORB never started)
+    if rows:
+        cols = list(rows[0].keys())
+        w = _csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        for r in rows:
+            w.writerow({k: r[k] for k in cols})
+    return Response(buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment;filename=indian_orb_trades.csv"})
+
+
 @app.route("/api/reset", methods=["POST"])
 def api_reset():
     if state.engine and state.engine.is_running():

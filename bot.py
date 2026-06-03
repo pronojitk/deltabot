@@ -18,7 +18,7 @@ from config import (
     TIMEFRAME, CANDLE_LIMIT, SCAN_INTERVAL, ALERT_COOLDOWN, STRATEGY_NAME, get_params,
     REGIME_FILTER_ENABLED, REGIME_LONG_MIN_BTC_24H, REGIME_SHORT_MAX_BTC_24H,
 )
-from delta_client import get_perpetual_contracts, get_ohlcv
+from delta_client import get_perpetual_contracts, get_ohlcv, get_ticker
 from indicators import detect_signals, detect_signals_for_symbol
 from telegram_alert import send_alert, send_startup_message
 from forward_test import ForwardTester
@@ -300,6 +300,48 @@ class BotEngine:
             except Exception as e:
                 logger.error("Error scanning %s: %s", symbol, e)
                 self._emit("error", symbol=symbol, error=str(e))
+
+        # ── Orphan-position sweep ────────────────────────────────────────
+        # Trades whose symbol fell out of self.symbols (Markov / volume
+        # filter / blacklist update) would otherwise never get re-priced,
+        # so their SL/TP/timeout would never fire. Fetch ticker price for
+        # each orphan and call forward_tester.update() once per scan.
+        try:
+            scanned = set(self.symbols)
+            with self.forward_tester.lock:
+                open_syms = {t["symbol"] for t in self.forward_tester.trades
+                             if t.get("status") == "OPEN"}
+            orphans = open_syms - scanned
+            if orphans:
+                now_ts = int(time.time())
+                for sym in orphans:
+                    if not self._running:
+                        break
+                    try:
+                        tk = get_ticker(sym)
+                        if not tk:
+                            continue
+                        # Prefer mark_price; fall back to close/spot_price.
+                        price = (tk.get("mark_price") or tk.get("close")
+                                 or tk.get("spot_price"))
+                        try:
+                            price = float(price) if price is not None else None
+                        except (TypeError, ValueError):
+                            price = None
+                        if not price or price <= 0:
+                            continue
+                        closed = self.forward_tester.update(sym, price, now_ts)
+                        for t in closed:
+                            closed_count += 1
+                            self._emit("trade_closed", trade=t)
+                            logger.info("Orphan sweep closed %s %s @ %g (%s)",
+                                        t.get("side"), sym, price, t.get("exit_reason"))
+                    except Exception as e:
+                        logger.warning("Orphan sweep error for %s: %s", sym, e)
+                logger.info("Orphan sweep: re-priced %d symbol(s) not in active universe",
+                            len(orphans))
+        except Exception as e:
+            logger.error("Orphan sweep failed: %s", e)
 
         if REGIME_FILTER_ENABLED and regime_skipped:
             logger.info("Regime filter: BTC 24h=%.2f%% — skipped %d signal(s)",

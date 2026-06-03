@@ -14,6 +14,7 @@ Provides:
 """
 
 import logging
+import os
 from collections import deque
 from threading import Lock
 from datetime import datetime, timezone
@@ -844,7 +845,30 @@ def api_reset():
     return jsonify({"ok": True})
 
 
+def _autostart_engines() -> None:
+    """Spin up the Delta + MCX engines automatically when the web app boots
+    so users don't have to click Start after every server restart.
+    Disable by setting AUTOSTART=0 in the environment."""
+    if os.getenv("AUTOSTART", "1") == "0":
+        state.log("INFO", "AUTOSTART=0 — engines will NOT start until /api/start is called")
+        return
+    try:
+        if not (state.engine and state.engine.is_running()):
+            state.engine = BotEngine(on_event=state.on_engine_event,
+                                     send_telegram=True,
+                                     forward_tester=state.tester)
+            state.engine.start()
+            state.log("INFO", "Auto-started Delta (crypto) engine on boot")
+        if MCX_AVAILABLE and not (state.mcx_engine and state.mcx_engine.is_running()):
+            state.mcx_engine = MCXBot(on_event=state.on_mcx_event, send_telegram=True)
+            state.mcx_engine.start()
+            state.log("INFO", "Auto-started MCX (Indian-ORB) engine on boot")
+    except Exception as e:
+        state.log("ERROR", f"Auto-start failed: {e}")
+
+
 # ============================================================== Run
 if __name__ == "__main__":
     print(f"\nDelta Bot Dashboard -> http://{WEB_HOST}:{WEB_PORT}\n")
+    _autostart_engines()
     app.run(host=WEB_HOST, port=WEB_PORT, debug=False, use_reloader=False)

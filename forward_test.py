@@ -321,7 +321,7 @@ class ForwardTester:
         """Re-price open trades for this symbol. Returns newly closed trades.
 
         `extras` may contain runtime indicators that some trades need (e.g.
-        gold ORB uses {'ema21_15m': value} for indicator-based trailing).
+        gold ORB uses {'ema21_5m': value} for indicator-based trailing).
         """
         self.last_prices[symbol] = current_price
         extras = extras or {}
@@ -377,8 +377,8 @@ class ForwardTester:
                 # Gold ORB v4: once 1R is hit (be_moved) we let the runner go,
                 # but bail the full position if a candle closes back through the
                 # 5m EMA21 — locks the runner in before TP if momentum dies.
-                if t.get("be_moved") and t.get("trail_indicator") == "ema21_15m":
-                    ema_v = extras.get("ema21_15m")
+                if t.get("be_moved") and t.get("trail_indicator") == "ema21_5m":
+                    ema_v = extras.get("ema21_5m")
                     if ema_v:
                         side  = t["side"]
                         entry = t["entry_price"]

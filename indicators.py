@@ -511,7 +511,7 @@ def detect_gold_signal(candles_5m: list[dict],
             "sl":              round(sl, 8),
             "tp":              round(price + 2 * risk, 8),   # 1:2
             "move_sl_to_be_at": round(price + risk, 8),       # BE at 1R
-            "trail_indicator": "ema21_15m",                   # 5m EMA21 trail after BE
+            "trail_indicator": "ema21_5m",                    # 5m EMA21 trail after BE
             "use_trailing":    False,
             "max_hold_bars":   p.get("max_hold_bars", 96),
         }]
@@ -529,7 +529,7 @@ def detect_gold_signal(candles_5m: list[dict],
             "sl":              round(sl, 8),
             "tp":              round(price - 2 * risk, 8),   # 1:2
             "move_sl_to_be_at": round(price - risk, 8),       # BE at 1R
-            "trail_indicator": "ema21_15m",                   # 5m EMA21 trail after BE
+            "trail_indicator": "ema21_5m",                    # 5m EMA21 trail after BE
             "use_trailing":    False,
             "max_hold_bars":   p.get("max_hold_bars", 96),
         }]

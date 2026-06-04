@@ -248,7 +248,7 @@ class BotEngine:
                     self._emit("price", symbol=symbol, price=last_price)
                     extras = {}
                     if diag and diag.get("ema21") is not None:
-                        extras["ema21_15m"] = diag.get("ema21")
+                        extras["ema21_5m"] = diag.get("ema21")
                     closed = self.forward_tester.update(symbol, last_price, last_time, extras=extras)
                     for t in closed:
                         closed_count += 1

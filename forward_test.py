@@ -373,11 +373,12 @@ class ForwardTester:
                         logger.info("Partial close %s %s @ %g | half-PnL $%.2f | SL→BE",
                                     side, symbol, tp1, partial_pnl)
 
-                # ── Indicator-based trail (EMA21 cross) after BE is reached ──
-                # Gold ORB v4: once 1R is hit (be_moved) we let the runner go,
-                # but bail the full position if a candle closes back through the
-                # 5m EMA21 — locks the runner in before TP if momentum dies.
-                if t.get("be_moved") and t.get("trail_indicator") == "ema21_5m":
+                # ── Indicator-based exit (EMA21 cross), active for whole trade ──
+                # Gold ORB v4: close the FULL position the moment a 5m candle
+                # closes back through the 5m EMA21 (LONG: close < EMA21,
+                # SHORT: close > EMA21) — regardless of BE / 1R. Competes with
+                # the ORB stop and the 1:2 TP; whichever fires first wins.
+                if t.get("trail_indicator") == "ema21_5m":
                     ema_v = extras.get("ema21_5m")
                     if ema_v:
                         side  = t["side"]

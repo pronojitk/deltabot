@@ -434,9 +434,10 @@ def detect_gold_signal(candles_5m: list[dict],
       • Initial SL = opposite side of ORB (ORB low for LONG, ORB high for SHORT).
       • TP        = 1:2 risk-reward (entry +/- 2 x risk).
       • At 1:1 unrealised: SL is moved to entry (breakeven). NO partial close.
-      • After BE: trail by 5m EMA(21) -- exit the full position when a 5m
-        candle closes back through EMA21 (locks in the runner before TP if
-        momentum dies). Whichever fires first wins: 2R TP, BE-stop, or trail.
+      • EMA21 exit (active for the WHOLE trade): close the full position the
+        moment a 5m candle closes back through the 5m EMA(21) -- LONG exits on
+        close < EMA21, SHORT on close > EMA21. Competes with the ORB stop and
+        the 1:2 TP; whichever fires first wins.
       • One trade per UTC day per symbol.
 
     The second arg `candles_htf` is accepted for backward compat and ignored

@@ -434,14 +434,22 @@ def detect_gold_signal(candles_5m: list[dict],
       • Initial SL = opposite side of ORB (ORB low for LONG, ORB high for SHORT).
       • TP        = 1:2 risk-reward (entry +/- 2 x risk).
       • At 1:1 unrealised: SL is moved to entry (breakeven). NO partial close.
+      • After BE: trail by 5m EMA(21) -- exit the full position when a 5m
+        candle closes back through EMA21 (locks in the runner before TP if
+        momentum dies). Whichever fires first wins: 2R TP, BE-stop, or trail.
       • One trade per UTC day per symbol.
 
     The second arg `candles_htf` is accepted for backward compat and ignored
     (the ORB is built directly from the 5m series).
     """
     p = params or {}
-    if len(candles_5m) < 20:
+    el = p.get("ema_long", 21)
+    if len(candles_5m) < max(20, el + 2):
         return []
+
+    # 5m EMA(21) for the post-BE trail (exit when price closes back through it).
+    _closes_all = [c["close"] for c in candles_5m]
+    e21_5 = ema(_closes_all, el)[-1] if len(_closes_all) >= el else 0.0
 
     ORB_START = 22 * 3600              # 22:00:00 UTC = 03:30 IST
     ORB_END   = 22 * 3600 + 35 * 60    # 22:35:00 UTC = 04:05 IST
@@ -481,6 +489,7 @@ def detect_gold_signal(candles_5m: list[dict],
     price = last["close"]
     base = {
         "atr":          round(rng, 8),     # range used as "risk unit"
+        "ema21":        round(e21_5, 8) if e21_5 else None,
         "orb_high":     round(orb_high, 8),
         "orb_low":      round(orb_low, 8),
         "orb_time_utc": orb_open,
@@ -502,6 +511,7 @@ def detect_gold_signal(candles_5m: list[dict],
             "sl":              round(sl, 8),
             "tp":              round(price + 2 * risk, 8),   # 1:2
             "move_sl_to_be_at": round(price + risk, 8),       # BE at 1R
+            "trail_indicator": "ema21_15m",                   # 5m EMA21 trail after BE
             "use_trailing":    False,
             "max_hold_bars":   p.get("max_hold_bars", 96),
         }]
@@ -519,6 +529,7 @@ def detect_gold_signal(candles_5m: list[dict],
             "sl":              round(sl, 8),
             "tp":              round(price - 2 * risk, 8),   # 1:2
             "move_sl_to_be_at": round(price - risk, 8),       # BE at 1R
+            "trail_indicator": "ema21_15m",                   # 5m EMA21 trail after BE
             "use_trailing":    False,
             "max_hold_bars":   p.get("max_hold_bars", 96),
         }]

@@ -373,15 +373,22 @@ class ForwardTester:
                         logger.info("Partial close %s %s @ %g | half-PnL $%.2f | SL→BE",
                                     side, symbol, tp1, partial_pnl)
 
-                # ── Indicator-based trail (e.g. EMA21 cross) after TP1 ───
-                if t.get("tp1_filled") and t.get("trail_indicator") == "ema21_15m":
+                # ── Indicator-based trail (EMA21 cross) after BE is reached ──
+                # Gold ORB v4: once 1R is hit (be_moved) we let the runner go,
+                # but bail the full position if a candle closes back through the
+                # 5m EMA21 — locks the runner in before TP if momentum dies.
+                if t.get("be_moved") and t.get("trail_indicator") == "ema21_15m":
                     ema_v = extras.get("ema21_15m")
                     if ema_v:
-                        side = t["side"]
-                        # Exit when current 15M close has CROSSED THROUGH the EMA
+                        side  = t["side"]
+                        entry = t["entry_price"]
                         if (side == "LONG"  and current_price < ema_v) or \
                            (side == "SHORT" and current_price > ema_v):
-                            self._close_trade(t, "WIN", current_price, current_time)
+                            # win/loss by realised direction vs entry
+                            won = (current_price >= entry) if side == "LONG" \
+                                  else (current_price <= entry)
+                            self._close_trade(t, "WIN" if won else "LOSS",
+                                              current_price, current_time)
                             t["exit_reason"] = "EMA21_TRAIL"
                             self._update_trade(t)
                             closed.append(dict(t))

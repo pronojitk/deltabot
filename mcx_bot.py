@@ -104,9 +104,11 @@ MIN_ORB_RANGE_PCT  = 0.004       # skip if ORB range < 0.4% of price (range too 
 BREAKOUT_BUFFER_PCT = 0.001      # require close beyond ORB high/low by 0.1% (no wick fakes)
 
 # Exit logic
-USE_TRAILING_STOP  = True        # ATR-style trail instead of fixed TP
-TRAIL_MULT_OF_ORB  = 1.0         # trail distance = ORB_range × this
+USE_TRAILING_STOP  = True        # trail the stop instead of using a fixed TP
 BREAKEVEN_AT_R     = 1.0         # move SL → entry once unrealised >= 1R profit
+TRAIL_WITH_EMA     = True        # after BE (1R), trail the SL along the 5m EMA(7)
+TRAIL_EMA_PERIOD   = 7           # EMA period used for the post-BE trail
+TRAIL_MULT_OF_ORB  = 1.0         # (fallback) ORB-range trail if TRAIL_WITH_EMA is off
 RR_RATIO           = 1.0         # fallback fixed TP if trailing disabled (1:1)
 
 # Per symbol per day: max 1 trade total (whichever side fires first wins;
@@ -404,22 +406,34 @@ class MCXBot:
         if USE_TRAILING_STOP and t.get("risk", 0) > 0:
             hw = t.get("high_water", t["entry"])
             risk = t["risk"]
-            trail_dist = t.get("orb_range", risk) * TRAIL_MULT_OF_ORB
+            # Post-BE trail distance source: 5m EMA(7) if enabled, else ORB-range.
+            ema_trail = None
+            if TRAIL_WITH_EMA:
+                try:
+                    ema_trail = float(
+                        df["Close"].ewm(span=TRAIL_EMA_PERIOD, adjust=False).mean().iloc[-1]
+                    )
+                except Exception:
+                    ema_trail = None
+            orb_trail_dist = t.get("orb_range", risk) * TRAIL_MULT_OF_ORB
             if t["side"] == "LONG":
                 if last > hw: hw = last; t["high_water"] = hw
                 # Breakeven gate
                 if not t.get("be_moved") and (hw - t["entry"]) >= BREAKEVEN_AT_R * risk:
                     t["sl"] = max(t["sl"], t["entry"]); t["be_moved"] = True
-                # Trailing ratchet (only after BE has been set so we don't loosen the initial stop)
+                # Trail (only after BE so we never loosen the initial stop)
                 if t.get("be_moved"):
-                    trail_sl = hw - trail_dist
+                    trail_sl = ema_trail if ema_trail is not None else (hw - orb_trail_dist)
+                    # never let the EMA trail sit above price (would insta-stop)
+                    trail_sl = min(trail_sl, last)
                     if trail_sl > t["sl"]: t["sl"] = trail_sl
             else:   # SHORT
                 if last < hw: hw = last; t["high_water"] = hw
                 if not t.get("be_moved") and (t["entry"] - hw) >= BREAKEVEN_AT_R * risk:
                     t["sl"] = min(t["sl"], t["entry"]); t["be_moved"] = True
                 if t.get("be_moved"):
-                    trail_sl = hw + trail_dist
+                    trail_sl = ema_trail if ema_trail is not None else (hw + orb_trail_dist)
+                    trail_sl = max(trail_sl, last)
                     if trail_sl < t["sl"]: t["sl"] = trail_sl
 
         hit = None

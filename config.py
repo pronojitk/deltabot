@@ -145,18 +145,19 @@ DEFAULT_PARAMS = {
 # Donchian — large caps on 1h
 _LARGE_CAP_1H = {**DEFAULT_PARAMS, "timeframe": "1h", "max_hold_bars": 240}
 
-# Gold strategy — pure SMC + Fib OTE, multi-timeframe.
-#   • 1H ORB: 22:00–23:00 UTC (03:30–04:30 IST) defines the range
-#   • 15M entry: close BEYOND ORB high/low AND beyond 15M EMA(21)
-#   • SL  = opposite ORB level
-#   • TP1 = entry ± 1R, close 50%
-#   • After TP1: SL → entry (BE), trail by 15M EMA(21) cross
+# Gold strategy v4 — pure ORB.
+#   • ORB window : 22:00–22:35 UTC  (= 03:30–04:05 IST, UTC+5:30)
+#                  built from seven 5-min candles (no HTF needed).
+#   • Entry      : first 5m candle AFTER 22:35 UTC whose close is beyond ORB.
+#   • SL         : opposite side of ORB (ORB low for LONG, ORB high for SHORT)
+#   • TP         : 1:2 risk-reward (entry ± 2 × risk)
+#   • SL → BE    : once price reaches +1R (no partial close, full size runs to TP)
+#   • One trade per UTC day per symbol.
 _GOLD_PARAMS = {
     "strategy":             "gold",
-    "timeframe":            "15m",   # entry execution timeframe
-    "htf_timeframe":        "1h",    # ORB timeframe (1H candles)
-    "ema_long":             21,      # EMA21 for entry filter + trail
-    "max_hold_bars":        96,      # 96 × 15m = 24h
+    "timeframe":            "5m",    # entry execution timeframe
+    "htf_timeframe":        "5m",    # kept for compat; ORB built from 5m series
+    "max_hold_bars":        288,     # 288 × 5m = 24h
 }
 
 SYMBOL_PARAMS: dict = {

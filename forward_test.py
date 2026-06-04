@@ -291,6 +291,10 @@ class ForwardTester:
             "trail_distance": float(signal.get("trail_distance", 0)) if use_trailing else 0.0,
             "atr_at_open":    float(signal.get("atr", 0)),     # remembered for dynamic trail tightening
             "trail_tightened": False,
+            # Gold-ORB v4: move SL -> entry once price reaches this level. None disables.
+            "move_sl_to_be_at": (float(signal["move_sl_to_be_at"])
+                                 if signal.get("move_sl_to_be_at") is not None else None),
+            "be_moved":       False,
             "high_water":     entry,    # peak favorable price seen so far
             "max_hold_bars":  int(signal.get("max_hold_bars", MAX_HOLD_BARS)),
             "status":         "OPEN",
@@ -327,6 +331,18 @@ class ForwardTester:
                 if t["symbol"] != symbol or t["status"] != "OPEN":
                     continue
                 t["bars_held"] += 1
+
+                # ── BE-only trigger (Gold ORB v4): move SL -> entry at 1R, no close ──
+                be_at = t.get("move_sl_to_be_at")
+                if be_at and not t.get("be_moved"):
+                    side = t["side"]; entry = t["entry_price"]
+                    hit = (side == "LONG"  and current_price >= be_at) or \
+                          (side == "SHORT" and current_price <= be_at)
+                    if hit:
+                        t["sl"]       = entry
+                        t["be_moved"] = True
+                        logger.info("BE move %s %s: SL -> entry %g (1R reached @ %g)",
+                                    side, t["symbol"], entry, current_price)
 
                 # ── Gold-style partial close at TP1 (1:1 R) ───────────────
                 if t.get("partial_tp1") and not t.get("tp1_filled"):

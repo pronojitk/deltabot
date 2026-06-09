@@ -54,3 +54,7 @@ Thumbs.db
 *.bak
 *.tmp
 *.cache
+
+# -- Local builds and SDKs --
+jdk17/
+deltabot-debug.apk

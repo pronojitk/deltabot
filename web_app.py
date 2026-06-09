@@ -16,7 +16,7 @@ Provides:
 import logging
 import os
 from collections import deque
-from threading import Lock
+from threading import Lock, Thread
 from datetime import datetime, timezone
 
 from flask import Flask, render_template, jsonify, request
@@ -71,6 +71,9 @@ class AppState:
         self.last_scan: dict = {}
         self.regime_btc_24h: float = 0.0
         self.regime_skipped_last: int = 0
+        self.hyperliquid_whale_trades: deque = deque(maxlen=1000)
+        self.hyperliquid_orderbook_analysis: dict[str, dict] = {}
+        self.hyperliquid_traders: list[dict] = []
         self.lock = Lock()
 
     def on_mcx_event(self, event: dict) -> None:
@@ -160,11 +163,283 @@ class AppState:
 
 state = AppState()
 
+# ============================================================== Hyperliquid Whale Tracker
+TRADER_ADDRESSES = [
+    ("0xdfc24b077bc1425ad1dea75bcb6f8158e10df303", "Hyper Vault Alpha"),
+    ("0xf5d81a135f756ca16544e53c20fc20643ec3ad53", "Mega Whale #1"),
+    ("0x95276ba037c30f90c6dfdc83f72af9fd6cecc293", "Mega Whale #2"),
+    ("0xecb63caa47c7c4e77f60f1ce858cf28dc2b82b00", "Mega Whale #3"),
+    ("0x47472cd62c99b8b5ce7e84e733515133e9aec0bd", "Smart Trader #1"),
+    ("0xf27ebb91ea420f73b59b205ac7e0b77a90ec8f3c", "Smart Trader #2"),
+    ("0xb676a78f19227ffe9a97db93263fce675e547dbf", "Smart Trader #3"),
+    ("0xf9109ada2f73c62e9889b45453065f0d99260a2d", "Alpha Scalper #1"),
+    ("0x31dea2516beee92135b96f464eeec3cf292a13f2", "Alpha Scalper #2"),
+    ("0x7b7f72a28fe109fa703eeed7984f2a8a68fedee2", "Alpha Scalper #3"),
+    ("0xe71cbf47fff309813bcea54f3ecf49a5f129264d", "HYPE Accumulator #1"),
+    ("0x91fc8c24de2ce3150ad489fb8b7e9b9aa3edaaf2", "HYPE Accumulator #2"),
+    ("0xc144f1b29a7cb7d47711f4497b71dd763a18932d", "Trend Follower #1"),
+    ("0xd80adf681abe30a3d644db1daae9abaa2d25a895", "Trend Follower #2"),
+    ("0x28f0233472b6a44e170e002a72845ca100be4a7e", "Trend Follower #3"),
+    ("0xa1273df77a51bbd2788fb4b16f4fd6bed870671d", "Arbitrageur #1"),
+    ("0x01162ca037c30f90c6dfdc83f72af9fd6cecc293", "Arbitrageur #2"),
+    ("0x078bfaa037c30f90c6dfdc83f72af9fd6cecc293", "Market Maker #1"),
+    ("0x0dd4bfa037c30f90c6dfdc83f72af9fd6cecc293", "Market Maker #2"),
+    ("0x08ef5dfc24b077bc1425ad1dea75bcb6f8158e10df", "Liquidity Provider"),
+]
+
+
+def hyperliquid_whale_loop():
+    import time
+    import requests
+    
+    logger.info("Hyperliquid Whale Tracker background thread starting...")
+    
+    coins = ["HYPE", "BTC", "ETH", "SOL", "XRP", "ARB", "SUI", "DOGE"]
+    
+    while True:
+        try:
+            for coin in coins:
+                time.sleep(0.25)  # respect rate limits
+                url = "https://api.hyperliquid.xyz/info"
+                payload = {"type": "recentTrades", "coin": coin}
+                
+                try:
+                    resp = requests.post(url, json=payload, timeout=8)
+                    if resp.status_code != 200:
+                        continue
+                    trades = resp.json()
+                    if not isinstance(trades, list):
+                        continue
+                except Exception as e:
+                    logger.debug("Hyperliquid API trades fetch failed for %s: %s", coin, e)
+                    continue
+                
+                new_whales = []
+                for t in trades:
+                    try:
+                        price = float(t.get("px") or 0)
+                        size = float(t.get("sz") or 0)
+                        val_usd = price * size
+                        
+                        if val_usd >= 5000:
+                            if val_usd >= 50000:
+                                category = "Mega Whale"
+                            elif val_usd >= 15000:
+                                category = "Whale"
+                            else:
+                                category = "Shark"
+                            
+                            trade_id = f"hl_{coin}_{t.get('time')}_{t.get('px')}_{t.get('sz')}_{t.get('side')}"
+                            
+                            new_whales.append({
+                                "id": trade_id,
+                                "symbol": coin,
+                                "price": price,
+                                "size": size,
+                                "value_usd": round(val_usd, 2),
+                                "side": "BUY" if t.get("side") == "B" else "SELL",
+                                "category": category,
+                                "time": int(t.get("time") / 1000)
+                            })
+                    except Exception:
+                        continue
+                
+                if new_whales:
+                    with state.lock:
+                        existing_ids = {w["id"] for w in state.hyperliquid_whale_trades}
+                        new_whales.sort(key=lambda x: x["time"])
+                        for w in new_whales:
+                            if w["id"] not in existing_ids:
+                                state.hyperliquid_whale_trades.appendleft(w)
+            
+            for coin in coins[:4]:
+                time.sleep(0.25)
+                url = "https://api.hyperliquid.xyz/info"
+                payload = {"type": "l2Book", "coin": coin}
+                
+                try:
+                    resp = requests.post(url, json=payload, timeout=8)
+                    if resp.status_code != 200:
+                        continue
+                    res = resp.json()
+                    levels = res.get("levels", [])
+                    if len(levels) < 2:
+                        continue
+                    bids = levels[0]
+                    asks = levels[1]
+                except Exception as e:
+                    logger.debug("Hyperliquid API l2Book fetch failed for %s: %s", coin, e)
+                    continue
+                
+                bids_top = bids[:30]
+                asks_top = asks[:30]
+                
+                bids_usd = sum(float(b.get("sz", 0)) * float(b.get("px", 0)) for b in bids_top)
+                asks_usd = sum(float(a.get("sz", 0)) * float(a.get("px", 0)) for a in asks_top)
+                
+                total_usd = bids_usd + asks_usd
+                imbalance_pct = (bids_usd / total_usd * 100.0) if total_usd else 50.0
+                
+                buy_walls = []
+                for b in bids:
+                    price = float(b.get("px") or 0)
+                    size = float(b.get("sz") or 0)
+                    val_usd = size * price
+                    if val_usd >= 15000:
+                        buy_walls.append({
+                            "price": price,
+                            "value_usd": round(val_usd, 2),
+                            "size": size
+                        })
+                buy_walls.sort(key=lambda x: -x["value_usd"])
+                buy_walls = buy_walls[:5]
+                
+                sell_walls = []
+                for a in asks:
+                    price = float(a.get("px") or 0)
+                    size = float(a.get("sz") or 0)
+                    val_usd = size * price
+                    if val_usd >= 15000:
+                        sell_walls.append({
+                            "price": price,
+                            "value_usd": round(val_usd, 2),
+                            "size": size
+                        })
+                sell_walls.sort(key=lambda x: -x["value_usd"])
+                sell_walls = sell_walls[:5]
+                
+                current_price = 0.0
+                if bids and asks:
+                    current_price = (float(bids[0].get("px", 0)) + float(asks[0].get("px", 0))) / 2.0
+                
+                if current_price > 0:
+                    for wall in buy_walls:
+                        wall["dist_pct"] = round((current_price - wall["price"]) / current_price * 100, 2)
+                    for wall in sell_walls:
+                        wall["dist_pct"] = round((wall["price"] - current_price) / current_price * 100, 2)
+                
+                with state.lock:
+                    state.hyperliquid_orderbook_analysis[coin] = {
+                        "imbalance_pct": round(imbalance_pct, 1),
+                        "buy_walls": buy_walls,
+                        "sell_walls": sell_walls,
+                        "current_price": current_price
+                    }
+            
+            time.sleep(6)
+        except Exception as e:
+            logger.error("Error in Hyperliquid whale tracker loop: %s", e)
+            time.sleep(10)
+
+
+def hyperliquid_traders_loop():
+    import time
+    import requests
+    
+    logger.info("Hyperliquid Traders Leaderboard background thread starting...")
+    
+    while True:
+        try:
+            results = []
+            for addr, name in TRADER_ADDRESSES:
+                time.sleep(0.25)
+                url = "https://api.hyperliquid.xyz/info"
+                payload = {"type": "clearinghouseState", "user": addr}
+                try:
+                    resp = requests.post(url, json=payload, timeout=6)
+                    if resp.status_code != 200:
+                        continue
+                    data = resp.json()
+                    
+                    margin = data.get("marginSummary", {})
+                    acct_val = float(margin.get("accountValue") or 0.0)
+                    margin_used = float(margin.get("totalMarginUsed") or 0.0)
+                    
+                    positions = []
+                    unrealized_pnl = 0.0
+                    for p_item in data.get("assetPositions", []):
+                        p = p_item.get("position", {})
+                        szi = float(p.get("szi") or 0.0)
+                        if szi == 0.0:
+                            continue
+                        pnl = float(p.get("unrealizedPnl") or 0.0)
+                        unrealized_pnl += pnl
+                        positions.append({
+                            "coin": p.get("coin"),
+                            "size": szi,
+                            "value": float(p.get("positionValue") or 0.0),
+                            "entry_price": float(p.get("entryPx") or 0.0),
+                            "unrealized_pnl": pnl,
+                            "leverage": p.get("leverage", {}).get("value", 1),
+                            "margin_used": float(p.get("marginUsed") or 0.0)
+                        })
+                    
+                    results.append({
+                        "user": addr,
+                        "alias": name,
+                        "account_value": round(acct_val, 2),
+                        "margin_used": round(margin_used, 2),
+                        "unrealized_pnl": round(unrealized_pnl, 2),
+                        "positions": positions,
+                        "position_count": len(positions)
+                    })
+                except Exception as e:
+                    logger.debug("Failed fetching trader state for %s: %s", addr, e)
+                    continue
+            
+            results.sort(key=lambda x: -x["account_value"])
+            
+            with state.lock:
+                state.hyperliquid_traders = results
+                
+            time.sleep(30)
+        except Exception as e:
+            logger.error("Error in Hyperliquid traders loop: %s", e)
+            time.sleep(15)
+
 
 # ============================================================== Routes
 @app.route("/")
 def dashboard():
     return render_template("dashboard.html")
+
+
+@app.route("/api/whale/data")
+def api_whale_data():
+    with state.lock:
+        trades = list(state.hyperliquid_whale_trades)
+        orderbook = state.hyperliquid_orderbook_analysis
+        
+    bias = {}
+    for coin in ["BTC", "ETH", "SOL"]:
+        coin_trades = [t for t in trades if t["symbol"] == coin]
+        buy_vol = sum(t["value_usd"] for t in coin_trades if t["side"] == "BUY")
+        sell_vol = sum(t["value_usd"] for t in coin_trades if t["side"] == "SELL")
+        total_vol = buy_vol + sell_vol
+        if total_vol > 0:
+            buy_pct = round(buy_vol / total_vol * 100.0, 1)
+            sell_pct = round(100.0 - buy_pct, 1)
+        else:
+            buy_pct = 50.0
+            sell_pct = 50.0
+        bias[coin] = {
+            "buy_pct": buy_pct,
+            "sell_pct": sell_pct,
+            "buy_volume": round(buy_vol, 2),
+            "sell_volume": round(sell_vol, 2)
+        }
+        
+    return jsonify({
+        "trades": trades,
+        "orderbook": orderbook,
+        "bias": bias
+    })
+
+
+@app.route("/api/whale/traders")
+def api_whale_traders():
+    with state.lock:
+        return jsonify(state.hyperliquid_traders)
 
 
 _last_tick_at = 0.0
@@ -871,4 +1146,7 @@ def _autostart_engines() -> None:
 if __name__ == "__main__":
     print(f"\nDelta Bot Dashboard -> http://{WEB_HOST}:{WEB_PORT}\n")
     _autostart_engines()
+    # Start Hyperliquid background trackers
+    Thread(target=hyperliquid_whale_loop, daemon=True).start()
+    Thread(target=hyperliquid_traders_loop, daemon=True).start()
     app.run(host=WEB_HOST, port=WEB_PORT, debug=False, use_reloader=False)

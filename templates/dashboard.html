@@ -784,6 +784,35 @@
   /* Same treatment for the mcx + open + signals tables outside sub-tabs */
   .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
+  @media (max-width: 900px) {
+    #sub-whale-grid, #sub-leaderboard-grid {
+      grid-template-columns: 1fr !important;
+    }
+  }
+
+  #sub-whale-grid table, #sub-leaderboard-grid table {
+    display: table !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  #sub-whale-grid table thead, #sub-whale-grid table tbody,
+  #sub-leaderboard-grid table thead, #sub-leaderboard-grid table tbody {
+    display: table-row-group !important;
+    min-width: 0 !important;
+    width: auto !important;
+  }
+  #sub-whale-grid table thead, #sub-leaderboard-grid table thead {
+    display: table-header-group !important;
+  }
+  #sub-whale-grid table tr, #sub-leaderboard-grid table tr {
+    display: table-row !important;
+  }
+  #sub-whale-grid table th, #sub-whale-grid table td,
+  #sub-leaderboard-grid table th, #sub-leaderboard-grid table td {
+    display: table-cell !important;
+    padding: 6px 8px !important;
+  }
+
   /* Tablet — collapse 3-col top row to 2, narrower paddings */
   @media (max-width: 1024px) {
     .app { padding: 12px; gap: 12px; }
@@ -950,20 +979,48 @@
 
     <!-- Top row: Performance · Live Market · Live Indicators -->
     <div class="top-stack">
-      <!-- Performance Stats -->
+      <!-- Whale Buying/Selling Percentage -->
       <div class="panel">
-        <div class="panel-h"><span>📊 Performance</span><span class="sub" id="ps-period">1W</span></div>
-        <div class="ps-row"><div class="ps-label">Win Rate</div><div class="ps-value" id="ps-winrate">—</div></div>
-        <div class="ps-bar"><div class="ps-bar-fill" id="ps-winbar" style="width:0%;"></div></div>
-        <div class="ps-row" style="margin-top:10px;">
-          <div class="ps-label">Total Trades</div>
-          <div class="ps-value" id="ps-trades">—</div>
-          <div class="ps-sub" id="ps-wl">—</div>
+        <div class="panel-h"><span>🐋 Whale Order Bias</span><span class="sub">BTC / ETH / SOL</span></div>
+        
+        <!-- BTC -->
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">
+            <span><b>BTC</b> Whale Bias</span>
+            <span id="whale-bias-btc-text" style="font-family:var(--font-mono);font-weight:600;color:var(--text-dim);">BUY 50.0% · SELL 50.0%</span>
+          </div>
+          <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--bg);border:1px solid var(--border);box-shadow:inset 0 1px 2px rgba(0,0,0,0.4);">
+            <div id="whale-bias-btc-buy" style="width:50%;background:linear-gradient(90deg,#2dd4bf,#34d399);"></div>
+            <div id="whale-bias-btc-sell" style="width:50%;background:linear-gradient(90deg,#f87171,#ff5b9e);"></div>
+          </div>
+          <div id="whale-bias-btc-vol" style="font-size:9.5px;color:var(--muted);margin-top:2.5px;text-align:right;font-family:var(--font-mono);">$0 buy / $0 sell</div>
         </div>
-        <div class="ps-divider"></div>
-        <div class="ps-row"><div class="ps-label">Profit Factor</div><div class="ps-value" id="ps-pf">—</div></div>
-        <div class="ps-divider"></div>
-        <div class="ps-row"><div class="ps-label">Max Drawdown</div><div class="ps-value" id="ps-dd">—</div></div>
+
+        <!-- ETH -->
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">
+            <span><b>ETH</b> Whale Bias</span>
+            <span id="whale-bias-eth-text" style="font-family:var(--font-mono);font-weight:600;color:var(--text-dim);">BUY 50.0% · SELL 50.0%</span>
+          </div>
+          <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--bg);border:1px solid var(--border);box-shadow:inset 0 1px 2px rgba(0,0,0,0.4);">
+            <div id="whale-bias-eth-buy" style="width:50%;background:linear-gradient(90deg,#2dd4bf,#34d399);"></div>
+            <div id="whale-bias-eth-sell" style="width:50%;background:linear-gradient(90deg,#f87171,#ff5b9e);"></div>
+          </div>
+          <div id="whale-bias-eth-vol" style="font-size:9.5px;color:var(--muted);margin-top:2.5px;text-align:right;font-family:var(--font-mono);">$0 buy / $0 sell</div>
+        </div>
+
+        <!-- SOL -->
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">
+            <span><b>SOL</b> Whale Bias</span>
+            <span id="whale-bias-sol-text" style="font-family:var(--font-mono);font-weight:600;color:var(--text-dim);">BUY 50.0% · SELL 50.0%</span>
+          </div>
+          <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--bg);border:1px solid var(--border);box-shadow:inset 0 1px 2px rgba(0,0,0,0.4);">
+            <div id="whale-bias-sol-buy" style="width:50%;background:linear-gradient(90deg,#2dd4bf,#34d399);"></div>
+            <div id="whale-bias-sol-sell" style="width:50%;background:linear-gradient(90deg,#f87171,#ff5b9e);"></div>
+          </div>
+          <div id="whale-bias-sol-vol" style="font-size:9.5px;color:var(--muted);margin-top:2.5px;text-align:right;font-family:var(--font-mono);">$0 buy / $0 sell</div>
+        </div>
       </div>
 
       <!-- Live Market (BTC) -->
@@ -1209,6 +1266,8 @@
         <div class="tab" data-sub="symbol-pnl">Symbol P&L</div>
         <div class="tab" data-sub="markov">📈 Markov</div>
         <div class="tab" data-sub="mcx">🇮🇳 Indian-ORB</div>
+        <div class="tab" data-sub="whale">🐳 Whale Tracker</div>
+        <div class="tab" data-sub="hl-leaderboard">🏆 Top 20 Whales</div>
         <div class="tab" data-sub="logs">Log</div>
         <span style="margin-left:auto;display:flex;gap:6px;align-items:center;">
           <a href="/api/export/trades.csv" download
@@ -1330,6 +1389,152 @@
             <th>P&L ₹</th><th>P&L % (margin)</th><th>Reason</th><th>Time</th></tr></thead>
           <tbody></tbody>
         </table>
+      </div>
+
+      <div class="sub-tab-content" id="sub-whale">
+        <div id="sub-whale-grid" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; padding: 12px;">
+          <!-- Left Side: Recent Large Trades -->
+          <div style="background: var(--panel2); border-radius: var(--r-md); padding: 12px; border: 1px solid var(--border); display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <h4 style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--primary);">🐳 Recent Whale Trades (Hyperliquid)</h4>
+              <span style="font-size: 10px; color: var(--muted);">Min size: $5,000 USD</span>
+            </div>
+            <div style="max-height: 380px; overflow-y: auto;">
+              <table id="whale-trades-table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Symbol</th>
+                    <th>Side</th>
+                    <th>Price</th>
+                    <th>Size</th>
+                    <th>USD Value</th>
+                    <th>Category</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- Dynamic rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Right Side: Order Book Concentration & Walls -->
+          <div style="background: var(--panel2); border-radius: var(--r-md); padding: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h4 style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--primary);">🧱 Order Book Walls</h4>
+              <select id="whale-symbol-select" style="background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; font-size: 11px; font-weight: 600; cursor: pointer;">
+                <!-- Filled dynamically -->
+              </select>
+            </div>
+
+            <!-- Imbalance gauge -->
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); margin-bottom: 4px;">
+                <span>BIDS (BUY DEPTH)</span>
+                <span>ASKS (SELL DEPTH)</span>
+              </div>
+              <div style="display: flex; height: 16px; border-radius: 8px; overflow: hidden; background: var(--bg); border: 1px solid var(--border); position: relative; box-shadow: inset 0 1px 2px rgba(0,0,0,0.4);">
+                <div id="whale-bid-bar" style="width: 50%; background: linear-gradient(90deg, #6ee7b7, var(--green2)); transition: width 0.4s ease; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: #11162c;">Bids 50%</div>
+                <div id="whale-ask-bar" style="width: 50%; background: linear-gradient(90deg, #ef9a9a, var(--red)); transition: width 0.4s ease; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: #11162c;">Asks 50%</div>
+              </div>
+              <div style="font-size: 9.5px; color: var(--muted); text-align: center; margin-top: 4px; font-family: var(--font-mono);" id="whale-imbalance-status">
+                Imbalance: Neutral (top 30 levels)
+              </div>
+            </div>
+
+            <!-- Walls split table -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <!-- Buy Walls -->
+              <div>
+                <div style="font-size: 10px; font-weight: 700; color: var(--green); margin-bottom: 4px; text-transform: uppercase;">🟢 Buy Walls (Support)</div>
+                <table id="whale-buy-walls-table" style="font-size: 11px;">
+                  <thead>
+                    <tr>
+                      <th>Price</th>
+                      <th>Value</th>
+                      <th>Dist %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- Dynamic -->
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Sell Walls -->
+              <div>
+                <div style="font-size: 10px; font-weight: 700; color: var(--red); margin-bottom: 4px; text-transform: uppercase;">🔴 Sell Walls (Resistance)</div>
+                <table id="whale-sell-walls-table" style="font-size: 11px;">
+                  <thead>
+                    <tr>
+                      <th>Price</th>
+                      <th>Value</th>
+                      <th>Dist %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <!-- Dynamic -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sub-tab-content" id="sub-hl-leaderboard">
+        <div id="sub-leaderboard-grid" style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; padding: 12px;">
+          <!-- Left Side: Leaderboard -->
+          <div style="background: var(--panel2); border-radius: var(--r-md); padding: 12px; border: 1px solid var(--border); display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <h4 style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--primary);">🏆 Top 20 Whales (Hyperliquid)</h4>
+              <span style="font-size: 10px; color: var(--muted);">Click row to view positions</span>
+            </div>
+            <div style="max-height: 380px; overflow-y: auto;">
+              <table id="leaderboard-table">
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>Trader Name / Wallet</th>
+                    <th>Net Worth (USD)</th>
+                    <th>Margin (USD)</th>
+                    <th>Unrealized P&L</th>
+                    <th>Positions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- Dynamic rows -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Right Side: Trader Positions -->
+          <div style="background: var(--panel2); border-radius: var(--r-md); padding: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <h4 style="font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--primary);">💼 Active Positions</h4>
+              <span id="selected-trader-name" style="font-size: 11px; font-weight: 600; color: var(--orange2);">Select a trader...</span>
+            </div>
+            <div style="max-height: 380px; overflow-y: auto;">
+              <table id="trader-positions-table">
+                <thead>
+                  <tr>
+                    <th>Coin</th>
+                    <th>Side</th>
+                    <th>Leverage</th>
+                    <th>Size (USD)</th>
+                    <th>Entry Price</th>
+                    <th>Unrealized P&L</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td colspan="6" style="color:var(--muted);text-align:center;padding:18px;">Click a trader to inspect open positions</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="sub-tab-content" id="sub-logs">
@@ -1507,23 +1712,7 @@ async function refreshState() {
   $('t-inbots').textContent = fmt$(stats.margin_used);
   $('t-inpos').textContent  = fmt$(stats.unrealized_pnl);
 
-  // Performance Stats card
-  const wr = stats.win_rate || 0;
-  $('ps-winrate').textContent = wr.toFixed(1) + '%';
-  $('ps-winrate').style.color = wr >= 50 ? 'var(--green)' : wr >= 30 ? 'var(--yellow)' : 'var(--red)';
-  $('ps-winbar').style.width  = Math.min(100, wr) + '%';
-  $('ps-winbar').style.background = wr >= 50 ? 'linear-gradient(90deg,var(--green),var(--green2))'
-                                   : wr >= 30 ? 'linear-gradient(90deg,var(--yellow),var(--orange))'
-                                   : 'linear-gradient(90deg,var(--red),var(--pink))';
-  $('ps-trades').textContent = stats.total_trades || 0;
-  $('ps-wl').textContent     = (stats.wins||0) + 'W · ' + (stats.losses||0) + 'L';
-  const pf = stats.profit_factor;
-  $('ps-pf').textContent     = (pf === 0 || pf === null || pf === undefined) ? '—'
-                              : (pf > 99 ? '∞' : (+pf).toFixed(2));
-  $('ps-pf').style.color     = (pf >= 1.0) ? 'var(--green)' : 'var(--red)';
-  const dd = stats.max_drawdown || 0;
-  $('ps-dd').textContent     = dd.toFixed(2) + '%';
-  $('ps-dd').style.color     = dd > 10 ? 'var(--red)' : dd > 5 ? 'var(--yellow)' : 'var(--green)';
+  // Performance Stats card removed from layout
 
   // Donut
   drawDonut(stats);
@@ -2253,6 +2442,237 @@ async function refreshLiveIndicators() {
            `ATR <b>${d.atr_pct.toFixed(2)}%</b> ${d.vol_ok ? 'tradeable' : 'out of band'}`);
 }
 
+// ============================================================== Hyperliquid Whale Tracker JS
+let _whaleSelectedSymbol = 'HYPE';
+let _whaleCache = null;
+let _selectedTraderAddress = null;
+let _tradersCache = [];
+
+function getWhaleBadge(cat) {
+  if (cat === 'Mega Whale') {
+    return `<span class="pill" style="color:var(--pink); background:rgba(255,91,158,0.15); border-color:rgba(255,91,158,0.35); box-shadow:0 0 8px rgba(255,91,158,0.25);">🐋 MEGA WHALE</span>`;
+  } else if (cat === 'Whale') {
+    return `<span class="pill" style="color:var(--orange); background:rgba(255,157,62,0.15); border-color:rgba(255,157,62,0.35);">🐳 WHALE</span>`;
+  } else {
+    return `<span class="pill" style="color:var(--cyan); background:rgba(56,189,248,0.15); border-color:rgba(56,189,248,0.35);">🦈 SHARK</span>`;
+  }
+}
+
+async function refreshWhaleData() {
+  const r = await fetch('/api/whale/data');
+  const d = await r.json();
+  _whaleCache = d;
+
+  // Populate Symbol select if empty
+  const select = $('whale-symbol-select');
+  if (select && select.options.length === 0) {
+    const symbols = Object.keys(d.orderbook);
+    if (symbols.length === 0) {
+      select.innerHTML = '<option value="HYPE">HYPE</option>';
+    } else {
+      select.innerHTML = symbols.map(s => `<option value="${s}">${s}</option>`).join('');
+      if (symbols.includes(_whaleSelectedSymbol)) {
+        select.value = _whaleSelectedSymbol;
+      } else {
+        _whaleSelectedSymbol = symbols[0];
+        select.value = _whaleSelectedSymbol;
+      }
+    }
+  }
+
+  // Render recent trades
+  const tbody = $('whale-trades-table').querySelector('tbody');
+  const trades = d.trades || [];
+  if (trades.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:18px;">No large trades detected yet</td></tr>';
+  } else {
+    tbody.innerHTML = trades.map(t => {
+      const sideCls = t.side === 'BUY' ? 'pos' : 'neg';
+      const sidePill = `<span class="pill ${t.side === 'BUY' ? 'LONG' : 'SHORT'}">${t.side}</span>`;
+      return `<tr>
+        <td style="color:var(--muted);font-size:10px;">${new Date(t.time * 1000).toLocaleTimeString()}</td>
+        <td><b>${t.symbol}</b></td>
+        <td>${sidePill}</td>
+        <td>${fmtNum(t.price)}</td>
+        <td>${fmtNum(t.size)}</td>
+        <td class="${sideCls}" style="font-weight:600;">${fmt$(t.value_usd)}</td>
+        <td>${getWhaleBadge(t.category)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Update Whale Bias cards for BTC, ETH, SOL
+  const bias = d.bias || {};
+  const updateBias = (coin) => {
+    const b = bias[coin] || { buy_pct: 50.0, sell_pct: 50.0, buy_volume: 0.0, sell_volume: 0.0 };
+    const textEl = $(`whale-bias-${coin.toLowerCase()}-text`);
+    const buyBar = $(`whale-bias-${coin.toLowerCase()}-buy`);
+    const sellBar = $(`whale-bias-${coin.toLowerCase()}-sell`);
+    const volEl = $(`whale-bias-${coin.toLowerCase()}-vol`);
+    
+    if (textEl) textEl.textContent = `BUY ${b.buy_pct.toFixed(1)}% · SELL ${b.sell_pct.toFixed(1)}%`;
+    if (buyBar) buyBar.style.width = `${b.buy_pct}%`;
+    if (sellBar) sellBar.style.width = `${b.sell_pct}%`;
+    
+    const fmtCmp = v => {
+      if (v == null) return '$0';
+      if (v >= 1e9) return '$' + (v/1e9).toFixed(2) + 'B';
+      if (v >= 1e6) return '$' + (v/1e6).toFixed(2) + 'M';
+      if (v >= 1e3) return '$' + (v/1e3).toFixed(2) + 'K';
+      return '$' + v.toLocaleString(undefined, {maximumFractionDigits: 0});
+    };
+    if (volEl) volEl.textContent = `${fmtCmp(b.buy_volume)} buy / ${fmtCmp(b.sell_volume)} sell`;
+  };
+  
+  updateBias('BTC');
+  updateBias('ETH');
+  updateBias('SOL');
+
+  renderWhaleOrderbook();
+}
+
+function renderWhaleOrderbook() {
+  if (!_whaleCache || !_whaleCache.orderbook) return;
+  const ob = _whaleCache.orderbook[_whaleSelectedSymbol];
+  
+  const bidBar = $('whale-bid-bar');
+  const askBar = $('whale-ask-bar');
+  const status = $('whale-imbalance-status');
+  const buyTbody = $('whale-buy-walls-table').querySelector('tbody');
+  const sellTbody = $('whale-sell-walls-table').querySelector('tbody');
+
+  if (!ob) {
+    if (bidBar) bidBar.style.width = '50%';
+    if (askBar) askBar.style.width = '50%';
+    if (status) status.textContent = 'No order book data yet for ' + _whaleSelectedSymbol;
+    if (buyTbody) buyTbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted);text-align:center;">No support walls</td></tr>';
+    if (sellTbody) sellTbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted);text-align:center;">No resistance walls</td></tr>';
+    return;
+  }
+
+  const bidsPct = ob.imbalance_pct;
+  const asksPct = 100.0 - bidsPct;
+  
+  if (bidBar) {
+    bidBar.style.width = bidsPct + '%';
+    bidBar.textContent = `Bids ${bidsPct.toFixed(0)}%`;
+  }
+  if (askBar) {
+    askBar.style.width = asksPct + '%';
+    askBar.textContent = `Asks ${asksPct.toFixed(0)}%`;
+  }
+
+  let imbText = 'Neutral';
+  if (bidsPct >= 60) imbText = 'Highly Bullish (Buy Pressure)';
+  else if (bidsPct >= 55) imbText = 'Slightly Bullish';
+  else if (bidsPct <= 40) imbText = 'Highly Bearish (Sell Pressure)';
+  else if (bidsPct <= 45) imbText = 'Slightly Bearish';
+  if (status) status.textContent = `Imbalance: ${imbText} (top 30 levels)`;
+
+  const buyWalls = ob.buy_walls || [];
+  if (buyWalls.length === 0) {
+    buyTbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted);text-align:center;">No support walls</td></tr>';
+  } else {
+    buyTbody.innerHTML = buyWalls.map(w => `<tr>
+      <td class="pos" style="font-weight:600;">${fmtNum(w.price)}</td>
+      <td>${fmt$(w.value_usd)}</td>
+      <td style="color:var(--muted);">${w.dist_pct.toFixed(2)}%</td>
+    </tr>`).join('');
+  }
+
+  const sellWalls = ob.sell_walls || [];
+  if (sellWalls.length === 0) {
+    sellTbody.innerHTML = '<tr><td colspan="3" style="color:var(--muted);text-align:center;">No resistance walls</td></tr>';
+  } else {
+    sellTbody.innerHTML = sellWalls.map(w => `<tr>
+      <td class="neg" style="font-weight:600;">${fmtNum(w.price)}</td>
+      <td>${fmt$(w.value_usd)}</td>
+      <td style="color:var(--muted);">${w.dist_pct.toFixed(2)}%</td>
+    </tr>`).join('');
+  }
+}
+
+// Bind Symbol select change
+document.addEventListener('change', e => {
+  if (e.target && e.target.id === 'whale-symbol-select') {
+    _whaleSelectedSymbol = e.target.value;
+    renderWhaleOrderbook();
+  }
+});
+
+async function refreshLeaderboardData() {
+  const r = await fetch('/api/whale/traders');
+  const traders = await r.json();
+  _tradersCache = traders;
+
+  if (traders.length === 0) return;
+
+  // Render Leaderboard table
+  const tbody = $('leaderboard-table').querySelector('tbody');
+  tbody.innerHTML = traders.map((tr, idx) => {
+    const isSelected = _selectedTraderAddress === tr.user;
+    const pnlCls = cls(tr.unrealized_pnl);
+    const shortAddr = tr.user.slice(0, 6) + '...' + tr.user.slice(-4);
+    return `<tr class="trader-row ${isSelected ? 'active' : ''}" data-addr="${tr.user}" style="cursor:pointer;${isSelected ? 'background:var(--panel-hi);' : ''}">
+      <td><b>#${idx + 1}</b></td>
+      <td>
+        <span style="font-weight:600;color:var(--primary);">${tr.alias}</span>
+        <div style="font-size:9.5px;color:var(--muted);margin-top:2px;">${shortAddr}</div>
+      </td>
+      <td style="font-weight:600;">${fmt$(tr.account_value)}</td>
+      <td>${fmt$(tr.margin_used)}</td>
+      <td class="${pnlCls}" style="font-weight:600;">${tr.unrealized_pnl >= 0 ? '+' : ''}${fmt$(tr.unrealized_pnl)}</td>
+      <td><span class="pill OPEN">${tr.position_count} pos</span></td>
+    </tr>`;
+  }).join('');
+
+  // Re-bind trader row click
+  document.querySelectorAll('.trader-row').forEach(row => {
+    row.onclick = () => {
+      _selectedTraderAddress = row.dataset.addr;
+      const tr = _tradersCache.find(x => x.user === _selectedTraderAddress);
+      if (tr) {
+        $('selected-trader-name').textContent = tr.alias + ' (' + tr.user.slice(0, 8) + '...)';
+        renderTraderPositions(tr.positions);
+      }
+      refreshLeaderboardData();
+    };
+  });
+
+  if (_selectedTraderAddress) {
+    const tr = traders.find(x => x.user === _selectedTraderAddress);
+    if (tr) {
+      renderTraderPositions(tr.positions);
+    }
+  } else if (traders.length > 0) {
+    _selectedTraderAddress = traders[0].user;
+    $('selected-trader-name').textContent = traders[0].alias + ' (' + traders[0].user.slice(0, 8) + '...)';
+    renderTraderPositions(traders[0].positions);
+  }
+}
+
+function renderTraderPositions(positions) {
+  const tbody = $('trader-positions-table').querySelector('tbody');
+  if (!positions || positions.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:18px;">No active open positions</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = positions.map(p => {
+    const side = p.size > 0 ? 'LONG' : 'SHORT';
+    const sidePill = `<span class="pill ${side}">${side}</span>`;
+    const pnlCls = cls(p.unrealized_pnl);
+    return `<tr>
+      <td><b>${p.coin}</b></td>
+      <td>${sidePill}</td>
+      <td>${p.leverage}x</td>
+      <td style="font-weight:600;">${fmt$(p.value)}</td>
+      <td>${fmtNum(p.entry_price)}</td>
+      <td class="${pnlCls}" style="font-weight:600;">${p.unrealized_pnl >= 0 ? '+' : ''}${fmt$(p.unrealized_pnl)}</td>
+    </tr>`;
+  }).join('');
+}
+
 async function refreshLogs() {
   const r = await fetch('/api/logs'); const logs = await r.json();
   $('log-pane').innerHTML = logs.slice().reverse().map(l =>
@@ -2274,6 +2694,8 @@ async function refreshAll() {
     safe(refreshSymbolPnL,    'sym-pnl'),
     safe(refreshMarkov,       'markov'),
     safe(refreshMCX,          'mcx'),
+    safe(refreshWhaleData,    'whale-data'),
+    safe(refreshLeaderboardData, 'leaderboard-data'),
     safe(refreshLogs,         'logs'),
   ]);
 }
